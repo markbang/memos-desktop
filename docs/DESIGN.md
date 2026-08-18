@@ -52,4 +52,4 @@ System UI typography is used for interface text. Monospace is reserved for resou
 
 ## Product boundary
 
-The desktop client should expose the complete Memos capability set without inheriting the web client's page composition. Server concepts remain unchanged: Memo, Attachment, Relation, Reaction, Share, View, Notification, User, Identity Provider, and Instance Setting.
+The desktop client should expose the complete Memos capability set without inheriting the web client's page composition. Server concepts remain unchanged: Memo, Attachment, Relation, Reaction, Share, Shortcut, Notification, User, Identity Provider, and Instance Setting.

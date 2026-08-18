@@ -23,14 +23,6 @@
             "description": "The filename of the attachment.",
             "type": "string"
           },
-          "mediaMetadata": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/MediaMetadata"
-              }
-            ],
-            "description": "Optional. Immutable normalized media metadata explicitly supplied by the client at creation time."
-          },
           "memo": {
             "description": "Optional. The related memo. Refer to `Memo.name`.\n Format: memos/{memo}",
             "type": "string"
@@ -558,40 +550,9 @@
         },
         "type": "object"
       },
-      "InstanceSetting_Storage": {
-        "description": "Storage is a configured attachment storage instance.",
-        "properties": {
-          "id": {
-            "description": "id is the stable identifier referenced by attachments.",
-            "type": "string"
-          },
-          "name": {
-            "description": "name is the human-readable storage name.",
-            "type": "string"
-          },
-          "s3Config": {
-            "$ref": "#/components/schemas/Storage_S3Config"
-          },
-          "type": {
-            "enum": [
-              "STORAGE_TYPE_UNSPECIFIED",
-              "DATABASE",
-              "LOCAL",
-              "S3"
-            ],
-            "format": "enum",
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "InstanceSetting_StorageSetting": {
         "description": "Storage configuration settings for instance attachments.",
         "properties": {
-          "defaultStorageId": {
-            "description": "Storage used for new attachments.",
-            "type": "string"
-          },
           "filepathTemplate": {
             "description": "The template of file path.\n e.g. assets/{timestamp}_{filename}",
             "type": "string"
@@ -602,10 +563,10 @@
                 "$ref": "#/components/schemas/StorageSetting_S3Config"
               }
             ],
-            "description": "Legacy compatibility field. New clients use storages."
+            "description": "The S3 config."
           },
           "storageType": {
-            "description": "Legacy compatibility field. New clients use default_storage_id.",
+            "description": "storage_type is the storage type.",
             "enum": [
               "STORAGE_TYPE_UNSPECIFIED",
               "DATABASE",
@@ -614,13 +575,6 @@
             ],
             "format": "enum",
             "type": "string"
-          },
-          "storages": {
-            "description": "Configured storage instances, including inactive instances referenced by attachments.",
-            "items": {
-              "$ref": "#/components/schemas/InstanceSetting_Storage"
-            },
-            "type": "array"
           },
           "uploadSizeLimitMb": {
             "description": "The max upload size in megabytes.",
@@ -883,18 +837,6 @@
         },
         "type": "object"
       },
-      "ListMemoViewsResponse": {
-        "properties": {
-          "memoViews": {
-            "description": "The list of memo views.",
-            "items": {
-              "$ref": "#/components/schemas/MemoView"
-            },
-            "type": "array"
-          }
-        },
-        "type": "object"
-      },
       "ListMemosResponse": {
         "properties": {
           "memos": {
@@ -921,6 +863,18 @@
             "description": "The list of personal access tokens.",
             "items": {
               "$ref": "#/components/schemas/PersonalAccessToken"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListShortcutsResponse": {
+        "properties": {
+          "shortcuts": {
+            "description": "The list of shortcuts.",
+            "items": {
+              "$ref": "#/components/schemas/Shortcut"
             },
             "type": "array"
           }
@@ -1001,53 +955,6 @@
           "placeholder": {
             "description": "A placeholder text for the location.",
             "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "MediaCaptureTime": {
-        "properties": {
-          "localDateTime": {
-            "type": "string"
-          },
-          "utcOffset": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "MediaLocation": {
-        "properties": {
-          "altitudeMeters": {
-            "format": "double",
-            "type": "number"
-          },
-          "latitude": {
-            "format": "double",
-            "type": "number"
-          },
-          "longitude": {
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "type": "object"
-      },
-      "MediaMetadata": {
-        "properties": {
-          "height": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "photo": {
-            "$ref": "#/components/schemas/PhotoMetadata"
-          },
-          "video": {
-            "$ref": "#/components/schemas/VideoMetadata"
-          },
-          "width": {
-            "format": "int32",
-            "type": "integer"
           }
         },
         "type": "object"
@@ -1241,27 +1148,6 @@
         },
         "type": "object"
       },
-      "MemoView": {
-        "properties": {
-          "filter": {
-            "description": "The CEL filter expression for the memo view, using the same grammar as the\n ListMemos `filter` argument. Reuse it by passing this value to ListMemos.",
-            "type": "string"
-          },
-          "name": {
-            "description": "The resource name of the memo view.\n Format: users/{user}/views/{view}",
-            "type": "string"
-          },
-          "title": {
-            "description": "The title of the memo view.",
-            "type": "string"
-          }
-        },
-        "required": [
-          "title",
-          "filter"
-        ],
-        "type": "object"
-      },
       "Memo_Property": {
         "description": "Computed properties of a memo.",
         "properties": {
@@ -1415,46 +1301,6 @@
         },
         "type": "object"
       },
-      "PhotoMetadata": {
-        "properties": {
-          "cameraMake": {
-            "type": "string"
-          },
-          "cameraModel": {
-            "type": "string"
-          },
-          "captureTime": {
-            "$ref": "#/components/schemas/MediaCaptureTime"
-          },
-          "exposureTimeSeconds": {
-            "format": "double",
-            "type": "number"
-          },
-          "fNumber": {
-            "format": "double",
-            "type": "number"
-          },
-          "focalLengthMm": {
-            "format": "double",
-            "type": "number"
-          },
-          "iso": {
-            "format": "int32",
-            "type": "integer"
-          },
-          "lensModel": {
-            "type": "string"
-          },
-          "location": {
-            "$ref": "#/components/schemas/MediaLocation"
-          },
-          "sourceExifOrientation": {
-            "format": "int32",
-            "type": "integer"
-          }
-        },
-        "type": "object"
-      },
       "Reaction": {
         "properties": {
           "contentId": {
@@ -1543,6 +1389,26 @@
         "required": [
           "name",
           "relations"
+        ],
+        "type": "object"
+      },
+      "Shortcut": {
+        "properties": {
+          "filter": {
+            "description": "The CEL filter expression for the shortcut, using the same grammar as the\n ListMemos `filter` argument. Reuse it by passing this value to ListMemos.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the shortcut.\n Format: users/{user}/shortcuts/{shortcut}",
+            "type": "string"
+          },
+          "title": {
+            "description": "The title of the shortcut.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
         ],
         "type": "object"
       },
@@ -1657,36 +1523,7 @@
         "type": "object"
       },
       "StorageSetting_S3Config": {
-        "description": "Legacy S3 configuration retained for compatibility with existing clients.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
-        "properties": {
-          "accessKeyId": {
-            "type": "string"
-          },
-          "accessKeySecret": {
-            "type": "string",
-            "writeOnly": true
-          },
-          "bucket": {
-            "type": "string"
-          },
-          "endpoint": {
-            "type": "string"
-          },
-          "insecureSkipTlsVerify": {
-            "description": "insecure_skip_tls_verify disables TLS certificate verification when connecting\n to the S3 endpoint. Only enable this for trusted endpoints that use a self-signed\n certificate; it removes protection against man-in-the-middle attacks.",
-            "type": "boolean"
-          },
-          "region": {
-            "type": "string"
-          },
-          "usePathStyle": {
-            "type": "boolean"
-          }
-        },
-        "type": "object"
-      },
-      "Storage_S3Config": {
-        "description": "S3 configuration for an S3-compatible object store.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
+        "description": "S3 configuration for cloud storage backend.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
         "properties": {
           "accessKeyId": {
             "type": "string"
@@ -2011,10 +1848,6 @@
             "description": "The default visibility of the memo.",
             "type": "string"
           },
-          "saveMediaMetadata": {
-            "description": "Whether the official client should save metadata from future media uploads.",
-            "type": "boolean"
-          },
           "theme": {
             "description": "The preferred theme of the user.\n This references a CSS file in the web/public/themes/ directory.\n If not set, the default theme will be used.",
             "type": "string"
@@ -2178,15 +2011,6 @@
           "url": {
             "description": "The URL to send the webhook to.",
             "type": "string"
-          }
-        },
-        "type": "object"
-      },
-      "VideoMetadata": {
-        "properties": {
-          "durationSeconds": {
-            "format": "double",
-            "type": "number"
           }
         },
         "type": "object"
@@ -2764,59 +2588,7 @@
         ]
       }
     },
-    "/api/v1/instance/settings:batchGet": {
-      "post": {
-        "description": "Batch gets instance settings.",
-        "operationId": "InstanceService_BatchGetInstanceSettings",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BatchGetInstanceSettingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/BatchGetInstanceSettingsResponse"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "InstanceService"
-        ]
-      }
-    },
-    "/api/v1/instance/stats": {
-      "get": {
-        "description": "GetInstanceStats returns resource usage statistics for the instance. Admin only.",
-        "operationId": "InstanceService_GetInstanceStats",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstanceStats"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "InstanceService"
-        ]
-      }
-    },
-    "/api/v1/instance/{instance}/*": {
+    "/api/v1/instance/settings/{instance}": {
       "get": {
         "description": "Gets an instance setting.",
         "operationId": "InstanceService_GetInstanceSetting",
@@ -2897,6 +2669,58 @@
         ]
       }
     },
+    "/api/v1/instance/settings:batchGet": {
+      "post": {
+        "description": "Batch gets instance settings.",
+        "operationId": "InstanceService_BatchGetInstanceSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGetInstanceSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchGetInstanceSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
+    "/api/v1/instance/stats": {
+      "get": {
+        "description": "GetInstanceStats returns resource usage statistics for the instance. Admin only.",
+        "operationId": "InstanceService_GetInstanceStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceStats"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
     "/api/v1/memos": {
       "get": {
         "description": "ListMemos lists memos with pagination and filter.",
@@ -2942,7 +2766,7 @@
             }
           },
           {
-            "description": "Optional. A CEL expression to filter memos. Combine terms with && and ||.\n Available fields:\n   content (string), creator (string, e.g. \"users/1\"),\n   created_ts / updated_ts (timestamp), pinned (bool),\n   visibility (string: PRIVATE | PROTECTED | PUBLIC),\n   tags (list<string>; match with `\"work\" in tags`, not `tag == \"work\"`),\n   has_task_list / has_link / has_code / has_incomplete_tasks (bool),\n   has_location (bool; true when the memo has a location attached).\n Note: the time fields here are created_ts / updated_ts, which differ from\n the create_time / update_time names used by order_by.\n Examples:\n   pinned == true && visibility == \"PUBLIC\"\n   tags.exists(t, t == \"urgent\")\n   content.contains(\"roadmap\") && created_ts > now - duration(\"168h\")",
+            "description": "Optional. A CEL expression to filter memos. Combine terms with && and ||.\n Available fields:\n   content (string), creator (string, e.g. \"users/1\"),\n   created_ts / updated_ts (timestamp), pinned (bool),\n   visibility (string: PRIVATE | PROTECTED | PUBLIC),\n   tags (list<string>; match with `\"work\" in tags`, not `tag == \"work\"`),\n   has_task_list / has_link / has_code / has_incomplete_tasks (bool).\n Note: the time fields here are created_ts / updated_ts, which differ from\n the create_time / update_time names used by order_by.\n Examples:\n   pinned == true && visibility == \"PUBLIC\"\n   tags.exists(t, t == \"urgent\")\n   content.contains(\"roadmap\") && created_ts > now - duration(\"168h\")",
             "in": "query",
             "name": "filter",
             "schema": {
@@ -3783,7 +3607,7 @@
         "operationId": "UserService_CreateUser",
         "parameters": [
           {
-            "description": "Optional. The resource ID to use for this user. If set, it must equal\n user.username and follow the username format.\n Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$",
+            "description": "Optional. The resource ID to use for this user. If set, it must equal\n user.username, follow the UID format, and not consist entirely of digits.\n Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$",
             "in": "query",
             "name": "userId",
             "schema": {
@@ -4528,10 +4352,10 @@
         ]
       }
     },
-    "/api/v1/users/{user}/views": {
+    "/api/v1/users/{user}/shortcuts": {
       "get": {
-        "description": "ListMemoViews returns a user's memo views. Each view is a named, reusable\n CEL filter (see MemoView.filter); pass its filter string directly to the\n ListMemos `filter` argument.",
-        "operationId": "MemoViewService_ListMemoViews",
+        "description": "ListShortcuts returns a user's saved shortcuts. Each shortcut is a named,\n reusable CEL filter (see Shortcut.filter); pass its filter string directly\n to the ListMemos `filter` argument to reuse a saved view.",
+        "operationId": "ShortcutService_ListShortcuts",
         "parameters": [
           {
             "description": "The user id.",
@@ -4548,7 +4372,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListMemoViewsResponse"
+                  "$ref": "#/components/schemas/ListShortcutsResponse"
                 }
               }
             },
@@ -4556,12 +4380,12 @@
           }
         },
         "tags": [
-          "MemoViewService"
+          "ShortcutService"
         ]
       },
       "post": {
-        "description": "CreateMemoView creates a new memo view for a user.",
-        "operationId": "MemoViewService_CreateMemoView",
+        "description": "CreateShortcut creates a new shortcut for a user.",
+        "operationId": "ShortcutService_CreateShortcut",
         "parameters": [
           {
             "description": "The user id.",
@@ -4573,7 +4397,7 @@
             }
           },
           {
-            "description": "Optional. If set, validate the request, but do not actually create the memo view.",
+            "description": "Optional. If set, validate the request, but do not actually create the shortcut.",
             "in": "query",
             "name": "validateOnly",
             "schema": {
@@ -4585,7 +4409,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MemoView"
+                "$ref": "#/components/schemas/Shortcut"
               }
             }
           },
@@ -4596,7 +4420,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoView"
+                  "$ref": "#/components/schemas/Shortcut"
                 }
               }
             },
@@ -4604,14 +4428,14 @@
           }
         },
         "tags": [
-          "MemoViewService"
+          "ShortcutService"
         ]
       }
     },
-    "/api/v1/users/{user}/views/{view}": {
+    "/api/v1/users/{user}/shortcuts/{shortcut}": {
       "delete": {
-        "description": "DeleteMemoView deletes a memo view for a user.",
-        "operationId": "MemoViewService_DeleteMemoView",
+        "description": "DeleteShortcut deletes a shortcut for a user.",
+        "operationId": "ShortcutService_DeleteShortcut",
         "parameters": [
           {
             "description": "The user id.",
@@ -4623,9 +4447,9 @@
             }
           },
           {
-            "description": "The view id.",
+            "description": "The shortcut id.",
             "in": "path",
-            "name": "view",
+            "name": "shortcut",
             "required": true,
             "schema": {
               "type": "string"
@@ -4639,12 +4463,12 @@
           }
         },
         "tags": [
-          "MemoViewService"
+          "ShortcutService"
         ]
       },
       "get": {
-        "description": "GetMemoView gets a memo view by name.",
-        "operationId": "MemoViewService_GetMemoView",
+        "description": "GetShortcut gets a shortcut by name.",
+        "operationId": "ShortcutService_GetShortcut",
         "parameters": [
           {
             "description": "The user id.",
@@ -4656,9 +4480,9 @@
             }
           },
           {
-            "description": "The view id.",
+            "description": "The shortcut id.",
             "in": "path",
-            "name": "view",
+            "name": "shortcut",
             "required": true,
             "schema": {
               "type": "string"
@@ -4670,7 +4494,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoView"
+                  "$ref": "#/components/schemas/Shortcut"
                 }
               }
             },
@@ -4678,12 +4502,12 @@
           }
         },
         "tags": [
-          "MemoViewService"
+          "ShortcutService"
         ]
       },
       "patch": {
-        "description": "UpdateMemoView updates a memo view for a user.",
-        "operationId": "MemoViewService_UpdateMemoView",
+        "description": "UpdateShortcut updates a shortcut for a user.",
+        "operationId": "ShortcutService_UpdateShortcut",
         "parameters": [
           {
             "description": "The user id.",
@@ -4695,9 +4519,9 @@
             }
           },
           {
-            "description": "The view id.",
+            "description": "The shortcut id.",
             "in": "path",
-            "name": "view",
+            "name": "shortcut",
             "required": true,
             "schema": {
               "type": "string"
@@ -4717,7 +4541,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/MemoView"
+                "$ref": "#/components/schemas/Shortcut"
               }
             }
           },
@@ -4728,7 +4552,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoView"
+                  "$ref": "#/components/schemas/Shortcut"
                 }
               }
             },
@@ -4736,7 +4560,7 @@
           }
         },
         "tags": [
-          "MemoViewService"
+          "ShortcutService"
         ]
       }
     },
@@ -5075,7 +4899,7 @@
       "name": "MemoService"
     },
     {
-      "name": "MemoViewService"
+      "name": "ShortcutService"
     },
     {
       "name": "UserService"

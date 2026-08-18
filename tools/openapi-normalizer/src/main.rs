@@ -27,6 +27,8 @@ fn main() -> Result<()> {
         .and_then(Value::as_object_mut)
         .context("OpenAPI document has no paths object")?;
 
+    repair_known_paths(paths);
+
     for path_item in paths.values_mut().filter_map(Value::as_object_mut) {
         for operation in path_item.values_mut().filter_map(Value::as_object_mut) {
             if let Some(responses) = operation
@@ -43,4 +45,32 @@ fn main() -> Result<()> {
         .with_context(|| format!("failed to write {}", output.display()))?;
 
     Ok(())
+}
+
+fn repair_known_paths(paths: &mut serde_json::Map<String, Value>) {
+    // protoc-gen-openapi emits the instance-setting wildcard binding as
+    // `/instance/{instance}/*`; the v0.30 REST gateway exposes the concrete
+    // `/instance/settings/{instance}` route instead.
+    if let Some(path_item) = paths.remove("/api/v1/instance/{instance}/*") {
+        paths.insert("/api/v1/instance/settings/{instance}".into(), path_item);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn repairs_v030_instance_setting_wildcard_path() {
+        let mut paths = serde_json::Map::new();
+        paths.insert(
+            "/api/v1/instance/{instance}/*".into(),
+            Value::Object(serde_json::Map::new()),
+        );
+
+        repair_known_paths(&mut paths);
+
+        assert!(!paths.contains_key("/api/v1/instance/{instance}/*"));
+        assert!(paths.contains_key("/api/v1/instance/settings/{instance}"));
+    }
 }

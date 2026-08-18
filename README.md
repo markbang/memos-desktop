@@ -6,9 +6,11 @@
 
 A native desktop client for Memos built with Rust, GPUI, and GPUI Component.
 
-The application uses Memos' generated v1 OpenAPI contract instead of maintaining a parallel handwritten protocol. It is designed for feature parity with the web application while keeping a distinct, desktop-first visual and interaction model.
+The application uses Memos' generated v1 OpenAPI contract instead of maintaining a parallel handwritten protocol. It targets Memos v0.30 and keeps a distinct, desktop-first visual and interaction model while covering the server's core workflows.
 
 ## Current milestone
+
+The current build is an alpha desktop client with a complete v0.30 transport contract and broad end-to-end workflow coverage. The UI remains intentionally independent from the web application.
 
 The current build includes:
 
@@ -19,7 +21,10 @@ The current build includes:
 - Memo creation with Private, Protected, and Public visibility
 - Pin, archive, restore, and permanent delete actions
 - Markdown detail inspector with activity, links, shares, and files tabs
-- Comment creation, reactions, share-link management, and attachment upload
+- Memo editing, creation-time/location updates, task actions, CEL saved shortcuts, and pagination
+- Comment/reaction/relation activity, share-link expiry/revocation, and authenticated attachment previews/opening
+- Inbox notification navigation, archive/delete mutations, account/PAT/webhook settings, and admin resources
+- Password registration, SSO/OAuth2 PKCE, shared memo links, and SSE live refresh
 - Demo mode for visual development without a server
 - A generated client covering every Memos v0.30 API operation
 
@@ -27,7 +32,7 @@ See `docs/FEATURE_MATRIX.md` for the parity plan and current status.
 
 ## Run
 
-Rust 1.97 or newer is required. Debian and Ubuntu users can install GPUI native dependencies with `scripts/install-linux-deps.sh`.
+Rust 1.97.1 is pinned by `rust-toolchain.toml`. Debian and Ubuntu users can install GPUI native dependencies with `scripts/install-linux-deps.sh`.
 
 ```bash
 cargo run -p memos-desktop
@@ -39,9 +44,28 @@ Use the visual demo workspace without a Memos server:
 cargo run -p memos-desktop -- --demo
 ```
 
+## Validation
+
+Run the normal workspace checks with:
+
+```bash
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+The ignored integration test must target a disposable official Memos v0.30 instance because it creates and deletes users and resources:
+
+```bash
+MEMOS_LIVE_URL=http://127.0.0.1:5231 \
+MEMOS_LIVE_USERNAME=admin \
+MEMOS_LIVE_PASSWORD=integration-test \
+cargo test -p memos-desktop live_v030_core_round_trip -- --ignored
+```
+
 ## Security
 
-Passwords and access tokens are kept in memory. The local configuration only persists the last server URL and username. Refresh cookies remain inside the HTTP client's cookie jar for the active process.
+Passwords, access tokens, and refresh cookies are kept in process memory only. The local configuration persists only the last server URL and username. Refresh cookies are held in the active session's clone-shared authentication state.
 
 ## Structure
 

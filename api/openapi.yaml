@@ -664,8 +664,7 @@ paths:
                        created_ts / updated_ts (timestamp), pinned (bool),
                        visibility (string: PRIVATE | PROTECTED | PUBLIC),
                        tags (list<string>; match with `"work" in tags`, not `tag == "work"`),
-                       has_task_list / has_link / has_code / has_incomplete_tasks (bool),
-                       has_location (bool; true when the memo has a location attached).
+                       has_task_list / has_link / has_code / has_incomplete_tasks (bool).
                      Note: the time fields here are created_ts / updated_ts, which differ from
                      the create_time / update_time names used by order_by.
                      Examples:
@@ -1356,7 +1355,7 @@ paths:
                   in: query
                   description: |-
                     Optional. The resource ID to use for this user. If set, it must equal
-                     user.username and follow the username format.
+                     user.username, follow the UID format, and not consist entirely of digits.
                      Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$
                   schema:
                     type: string
@@ -1942,15 +1941,15 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /api/v1/users/{user}/views:
+    /api/v1/users/{user}/shortcuts:
         get:
             tags:
-                - MemoViewService
+                - ShortcutService
             description: |-
-                ListMemoViews returns a user's memo views. Each view is a named, reusable
-                 CEL filter (see MemoView.filter); pass its filter string directly to the
-                 ListMemos `filter` argument.
-            operationId: MemoViewService_ListMemoViews
+                ListShortcuts returns a user's saved shortcuts. Each shortcut is a named,
+                 reusable CEL filter (see Shortcut.filter); pass its filter string directly
+                 to the ListMemos `filter` argument to reuse a saved view.
+            operationId: ShortcutService_ListShortcuts
             parameters:
                 - name: user
                   in: path
@@ -1964,7 +1963,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ListMemoViewsResponse'
+                                $ref: '#/components/schemas/ListShortcutsResponse'
                 default:
                     description: Default error response
                     content:
@@ -1973,9 +1972,9 @@ paths:
                                 $ref: '#/components/schemas/Status'
         post:
             tags:
-                - MemoViewService
-            description: CreateMemoView creates a new memo view for a user.
-            operationId: MemoViewService_CreateMemoView
+                - ShortcutService
+            description: CreateShortcut creates a new shortcut for a user.
+            operationId: ShortcutService_CreateShortcut
             parameters:
                 - name: user
                   in: path
@@ -1985,14 +1984,14 @@ paths:
                     type: string
                 - name: validateOnly
                   in: query
-                  description: Optional. If set, validate the request, but do not actually create the memo view.
+                  description: Optional. If set, validate the request, but do not actually create the shortcut.
                   schema:
                     type: boolean
             requestBody:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/MemoView'
+                            $ref: '#/components/schemas/Shortcut'
                 required: true
             responses:
                 "200":
@@ -2000,19 +1999,19 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/MemoView'
+                                $ref: '#/components/schemas/Shortcut'
                 default:
                     description: Default error response
                     content:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Status'
-    /api/v1/users/{user}/views/{view}:
+    /api/v1/users/{user}/shortcuts/{shortcut}:
         get:
             tags:
-                - MemoViewService
-            description: GetMemoView gets a memo view by name.
-            operationId: MemoViewService_GetMemoView
+                - ShortcutService
+            description: GetShortcut gets a shortcut by name.
+            operationId: ShortcutService_GetShortcut
             parameters:
                 - name: user
                   in: path
@@ -2020,9 +2019,9 @@ paths:
                   required: true
                   schema:
                     type: string
-                - name: view
+                - name: shortcut
                   in: path
-                  description: The view id.
+                  description: The shortcut id.
                   required: true
                   schema:
                     type: string
@@ -2032,7 +2031,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/MemoView'
+                                $ref: '#/components/schemas/Shortcut'
                 default:
                     description: Default error response
                     content:
@@ -2041,9 +2040,9 @@ paths:
                                 $ref: '#/components/schemas/Status'
         delete:
             tags:
-                - MemoViewService
-            description: DeleteMemoView deletes a memo view for a user.
-            operationId: MemoViewService_DeleteMemoView
+                - ShortcutService
+            description: DeleteShortcut deletes a shortcut for a user.
+            operationId: ShortcutService_DeleteShortcut
             parameters:
                 - name: user
                   in: path
@@ -2051,9 +2050,9 @@ paths:
                   required: true
                   schema:
                     type: string
-                - name: view
+                - name: shortcut
                   in: path
-                  description: The view id.
+                  description: The shortcut id.
                   required: true
                   schema:
                     type: string
@@ -2069,9 +2068,9 @@ paths:
                                 $ref: '#/components/schemas/Status'
         patch:
             tags:
-                - MemoViewService
-            description: UpdateMemoView updates a memo view for a user.
-            operationId: MemoViewService_UpdateMemoView
+                - ShortcutService
+            description: UpdateShortcut updates a shortcut for a user.
+            operationId: ShortcutService_UpdateShortcut
             parameters:
                 - name: user
                   in: path
@@ -2079,9 +2078,9 @@ paths:
                   required: true
                   schema:
                     type: string
-                - name: view
+                - name: shortcut
                   in: path
-                  description: The view id.
+                  description: The shortcut id.
                   required: true
                   schema:
                     type: string
@@ -2095,7 +2094,7 @@ paths:
                 content:
                     application/json:
                         schema:
-                            $ref: '#/components/schemas/MemoView'
+                            $ref: '#/components/schemas/Shortcut'
                 required: true
             responses:
                 "200":
@@ -2103,7 +2102,7 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/MemoView'
+                                $ref: '#/components/schemas/Shortcut'
                 default:
                     description: Default error response
                     content:
@@ -2407,10 +2406,6 @@ components:
                     allOf:
                         - $ref: '#/components/schemas/MotionMedia'
                     description: Optional. Motion media metadata.
-                mediaMetadata:
-                    allOf:
-                        - $ref: '#/components/schemas/MediaMetadata'
-                    description: Optional. Immutable normalized media metadata explicitly supplied by the client at creation time.
         BatchDeleteAttachmentsRequest:
             required:
                 - names
@@ -2911,26 +2906,6 @@ components:
                 email:
                     $ref: '#/components/schemas/NotificationSetting_EmailSetting'
             description: Notification transport configuration.
-        InstanceSetting_Storage:
-            type: object
-            properties:
-                id:
-                    type: string
-                    description: id is the stable identifier referenced by attachments.
-                name:
-                    type: string
-                    description: name is the human-readable storage name.
-                type:
-                    enum:
-                        - STORAGE_TYPE_UNSPECIFIED
-                        - DATABASE
-                        - LOCAL
-                        - S3
-                    type: string
-                    format: enum
-                s3Config:
-                    $ref: '#/components/schemas/Storage_S3Config'
-            description: Storage is a configured attachment storage instance.
         InstanceSetting_StorageSetting:
             type: object
             properties:
@@ -2941,7 +2916,7 @@ components:
                         - LOCAL
                         - S3
                     type: string
-                    description: Legacy compatibility field. New clients use default_storage_id.
+                    description: storage_type is the storage type.
                     format: enum
                 filepathTemplate:
                     type: string
@@ -2954,15 +2929,7 @@ components:
                 s3Config:
                     allOf:
                         - $ref: '#/components/schemas/StorageSetting_S3Config'
-                    description: Legacy compatibility field. New clients use storages.
-                storages:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/InstanceSetting_Storage'
-                    description: Configured storage instances, including inactive instances referenced by attachments.
-                defaultStorageId:
-                    type: string
-                    description: Storage used for new attachments.
+                    description: The S3 config.
             description: Storage configuration settings for instance attachments.
         InstanceSetting_TagMetadata:
             type: object
@@ -3162,14 +3129,6 @@ components:
                     items:
                         $ref: '#/components/schemas/MemoShare'
                     description: The list of share links.
-        ListMemoViewsResponse:
-            type: object
-            properties:
-                memoViews:
-                    type: array
-                    items:
-                        $ref: '#/components/schemas/MemoView'
-                    description: The list of memo views.
         ListMemosResponse:
             type: object
             properties:
@@ -3194,6 +3153,14 @@ components:
                 nextPageToken:
                     type: string
                     description: A token for the next page of results.
+        ListShortcutsResponse:
+            type: object
+            properties:
+                shortcuts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Shortcut'
+                    description: The list of shortcuts.
         ListUserNotificationsResponse:
             type: object
             properties:
@@ -3252,38 +3219,6 @@ components:
                     type: number
                     description: The longitude of the location.
                     format: double
-        MediaCaptureTime:
-            type: object
-            properties:
-                localDateTime:
-                    type: string
-                utcOffset:
-                    type: string
-        MediaLocation:
-            type: object
-            properties:
-                latitude:
-                    type: number
-                    format: double
-                longitude:
-                    type: number
-                    format: double
-                altitudeMeters:
-                    type: number
-                    format: double
-        MediaMetadata:
-            type: object
-            properties:
-                width:
-                    type: integer
-                    format: int32
-                height:
-                    type: integer
-                    format: int32
-                photo:
-                    $ref: '#/components/schemas/PhotoMetadata'
-                video:
-                    $ref: '#/components/schemas/VideoMetadata'
         Memo:
             required:
                 - state
@@ -3438,25 +3373,6 @@ components:
                          If unset, the link never expires.
                     format: date-time
             description: MemoShare is an access grant that permits read-only access to a memo via an opaque bearer token.
-        MemoView:
-            required:
-                - title
-                - filter
-            type: object
-            properties:
-                name:
-                    type: string
-                    description: |-
-                        The resource name of the memo view.
-                         Format: users/{user}/views/{view}
-                title:
-                    type: string
-                    description: The title of the memo view.
-                filter:
-                    type: string
-                    description: |-
-                        The CEL filter expression for the memo view, using the same grammar as the
-                         ListMemos `filter` argument. Reuse it by passing this value to ListMemos.
         Memo_Property:
             type: object
             properties:
@@ -3569,34 +3485,6 @@ components:
             description: |-
                 PersonalAccessToken represents a long-lived token for API/script access.
                  PATs are distinct from short-lived JWT access tokens used for session authentication.
-        PhotoMetadata:
-            type: object
-            properties:
-                captureTime:
-                    $ref: '#/components/schemas/MediaCaptureTime'
-                location:
-                    $ref: '#/components/schemas/MediaLocation'
-                sourceExifOrientation:
-                    type: integer
-                    format: int32
-                cameraMake:
-                    type: string
-                cameraModel:
-                    type: string
-                lensModel:
-                    type: string
-                fNumber:
-                    type: number
-                    format: double
-                exposureTimeSeconds:
-                    type: number
-                    format: double
-                iso:
-                    type: integer
-                    format: int32
-                focalLengthMm:
-                    type: number
-                    format: double
         Reaction:
             required:
                 - contentId
@@ -3674,6 +3562,24 @@ components:
                     items:
                         $ref: '#/components/schemas/MemoRelation'
                     description: Required. The relations to set for the memo.
+        Shortcut:
+            required:
+                - title
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        The resource name of the shortcut.
+                         Format: users/{user}/shortcuts/{shortcut}
+                title:
+                    type: string
+                    description: The title of the shortcut.
+                filter:
+                    type: string
+                    description: |-
+                        The CEL filter expression for the shortcut, using the same grammar as the
+                         ListMemos `filter` argument. Reuse it by passing this value to ListMemos.
         SignInRequest:
             type: object
             properties:
@@ -3779,32 +3685,7 @@ components:
                          to the S3 endpoint. Only enable this for trusted endpoints that use a self-signed
                          certificate; it removes protection against man-in-the-middle attacks.
             description: |-
-                Legacy S3 configuration retained for compatibility with existing clients.
-                 Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/
-        Storage_S3Config:
-            type: object
-            properties:
-                accessKeyId:
-                    type: string
-                accessKeySecret:
-                    writeOnly: true
-                    type: string
-                endpoint:
-                    type: string
-                region:
-                    type: string
-                bucket:
-                    type: string
-                usePathStyle:
-                    type: boolean
-                insecureSkipTlsVerify:
-                    type: boolean
-                    description: |-
-                        insecure_skip_tls_verify disables TLS certificate verification when connecting
-                         to the S3 endpoint. Only enable this for trusted endpoints that use a self-signed
-                         certificate; it removes protection against man-in-the-middle attacks.
-            description: |-
-                S3 configuration for an S3-compatible object store.
+                S3 configuration for cloud storage backend.
                  Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/
         TestInstanceEmailSettingRequest:
             type: object
@@ -4040,9 +3921,6 @@ components:
                         The preferred theme of the user.
                          This references a CSS file in the web/public/themes/ directory.
                          If not set, the default theme will be used.
-                saveMediaMetadata:
-                    type: boolean
-                    description: Whether the official client should save metadata from future media uploads.
             description: General user settings configuration.
         UserSetting_TagMetadata:
             type: object
@@ -4171,12 +4049,6 @@ components:
                     type: boolean
                     description: Whether a signing secret is configured for this webhook.
             description: UserWebhook represents a webhook owned by a user.
-        VideoMetadata:
-            type: object
-            properties:
-                durationSeconds:
-                    type: number
-                    format: double
 tags:
     - name: AIService
     - name: AttachmentService
@@ -4184,5 +4056,5 @@ tags:
     - name: IdentityProviderService
     - name: InstanceService
     - name: MemoService
-    - name: MemoViewService
+    - name: ShortcutService
     - name: UserService

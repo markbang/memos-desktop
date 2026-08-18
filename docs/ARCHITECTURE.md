@@ -18,9 +18,9 @@ Network work never executes on the render thread. `ApiSession` dispatches genera
 
 ## API contract
 
-`api/openapi.yaml` is copied from the upstream Memos repository. `openapi-normalizer` parses it structurally and removes only the generator-incompatible `default` response declarations. Progenitor then emits `crates/memos-api/src/generated.rs`; the stable crate wrapper and authentication hook remain outside generated output. Run `scripts/update-api.sh` when the upstream contract changes.
+`api/openapi.yaml` is pinned to the official Memos `v0.30.0` contract. This matters because later Memos main builds replace the stable `ShortcutService` contract with a different saved-view service. `openapi-normalizer` parses the document structurally, removes generator-incompatible `default` response declarations, and repairs the known v0.30 instance-setting wildcard route. Progenitor then emits `crates/memos-api/src/generated.rs`; `scripts/update-api.sh` reapplies the small client-state hook after regeneration.
 
-The generated crate is extended with a per-base-URL bearer-token registry through Progenitor's request hook. A shared reqwest cookie jar keeps refresh-token cookies for the active process.
+Each generated `Client` owns clone-shared authentication state, so two sessions for the same server cannot overwrite one another. Progenitor's request hook injects the bearer token and the Memos refresh cookie. Memos v0.30's REST gateway exposes refresh cookies as response metadata and does not forward REST request cookies to gRPC metadata, so refresh and sign-out use the official Connect RPC endpoints while normal resource operations use the generated REST client.
 
 ## Authentication invariants
 
@@ -29,7 +29,7 @@ The generated crate is extended with a per-base-URL bearer-token registry throug
 - Bearer tokens are marked sensitive in HTTP headers.
 - Refresh occurs 30 seconds before token expiry.
 - Personal access tokens have no client-side expiry assumption.
-- Failed PAT validation clears the token registry entry.
+- Failed PAT validation clears the session's bearer and refresh-cookie state.
 
 ## Compatibility
 

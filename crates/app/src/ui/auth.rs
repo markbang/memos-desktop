@@ -3,7 +3,7 @@ use gpui::{
     prelude::FluentBuilder as _, px,
 };
 use gpui_component::{
-    Icon, IconName, Sizable, StyledExt,
+    Icon, IconName, Sizable, StyledExt, WindowExt as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::Input,
@@ -11,9 +11,58 @@ use gpui_component::{
 };
 
 use super::{AuthMode, MemosDesktop};
-use crate::theme;
+use crate::{api::ApiSession, theme};
 
 impl MemosDesktop {
+    pub(super) fn show_sso_provider_dialog(
+        &self,
+        server_url: String,
+        session: ApiSession,
+        profile: memos_api::types::InstanceProfile,
+        providers: Vec<memos_api::types::IdentityProvider>,
+        window: &mut Window,
+        cx: &mut gpui::Context<Self>,
+    ) {
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let view = view.clone();
+            let server_url = server_url.clone();
+            let session = session.clone();
+            let profile = profile.clone();
+            dialog.title("Sign in with SSO").child(
+                v_flex()
+                    .gap_2()
+                    .children(providers.clone().into_iter().enumerate().map(
+                        move |(ix, provider)| {
+                            let view = view.clone();
+                            let server_url = server_url.clone();
+                            let session = session.clone();
+                            let profile = profile.clone();
+                            let label = provider.title.clone();
+                            Button::new(("sso-provider", ix))
+                                .large()
+                                .outline()
+                                .icon(IconName::ExternalLink)
+                                .label(label)
+                                .on_click(move |_, window, cx| {
+                                    window.close_dialog(cx);
+                                    view.update(cx, |this, cx| {
+                                        this.begin_sso(
+                                            server_url.clone(),
+                                            session.clone(),
+                                            profile.clone(),
+                                            provider.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                })
+                        },
+                    )),
+            )
+        });
+    }
+
     pub(super) fn render_auth(
         &mut self,
         _window: &mut Window,
@@ -240,6 +289,49 @@ impl MemosDesktop {
                                                 this.authenticate(true, cx);
                                             })),
                                     ),
+                            )
+                            .when(password_mode, |form| {
+                                form.child(
+                                    Button::new("create-account")
+                                        .large()
+                                        .outline()
+                                        .icon(IconName::Plus)
+                                        .label("Create account or initialize instance")
+                                        .loading(self.loading)
+                                        .on_click(cx.listener(|this, _, _, cx| {
+                                            this.register(cx);
+                                        })),
+                                )
+                            })
+                            .child(
+                                Button::new("connect-sso")
+                                    .large()
+                                    .outline()
+                                    .icon(IconName::ExternalLink)
+                                    .label("Sign in with SSO")
+                                    .loading(self.loading)
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.discover_sso(window, cx);
+                                    })),
+                            )
+                            .child(
+                                v_flex().gap_2().child(field_label("Shared memo")).child(
+                                    h_flex()
+                                        .gap_2()
+                                        .child(
+                                            Input::new(&self.shared_link_input)
+                                                .prefix(Icon::new(IconName::ExternalLink).size_4())
+                                                .cleanable(true),
+                                        )
+                                        .child(
+                                            Button::new("open-shared-memo")
+                                                .large()
+                                                .label("Open")
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.open_shared_memo(cx);
+                                                })),
+                                        ),
+                                ),
                             ),
                     ),
             )
