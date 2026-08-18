@@ -84,25 +84,44 @@ impl SsoFlow {
             match self.listener.accept() {
                 Ok((mut stream, _)) => {
                     stream
+                        .set_nonblocking(false)
+                        .map_err(|error| ApiError::Request(error.to_string()))?;
+                    stream
                         .set_read_timeout(Some(Duration::from_secs(5)))
                         .map_err(|error| ApiError::Request(error.to_string()))?;
                     let mut request = [0_u8; 8192];
-                    let read = match stream.read(&mut request) {
-                        Ok(0) => continue,
-                        Ok(read) => read,
-                        Err(error)
-                            if matches!(
-                                error.kind(),
-                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
-                            ) =>
-                        {
-                            if Instant::now() >= deadline {
-                                return Err(ApiError::Request("SSO callback timed out".into()));
+                    let mut read = 0;
+                    loop {
+                        match stream.read(&mut request[read..]) {
+                            Ok(0) => break,
+                            Ok(count) => {
+                                read += count;
+                                if request[..read]
+                                    .windows(4)
+                                    .any(|window| window == b"\r\n\r\n")
+                                    || request[..read].windows(2).any(|window| window == b"\n\n")
+                                    || read == request.len()
+                                {
+                                    break;
+                                }
                             }
-                            continue;
+                            Err(error)
+                                if matches!(
+                                    error.kind(),
+                                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                                ) =>
+                            {
+                                if Instant::now() >= deadline {
+                                    return Err(ApiError::Request("SSO callback timed out".into()));
+                                }
+                                break;
+                            }
+                            Err(error) => return Err(ApiError::Request(error.to_string())),
                         }
-                        Err(error) => return Err(ApiError::Request(error.to_string())),
-                    };
+                    }
+                    if read == 0 {
+                        continue;
+                    }
                     let request = String::from_utf8_lossy(&request[..read]);
                     let result =
                         parse_callback_code(&request, &self.state).map(|code| SsoCallback {
