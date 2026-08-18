@@ -67,15 +67,6 @@ pub mod types {
     ///      "description": "The filename of the attachment.",
     ///      "type": "string"
     ///    },
-    ///    "mediaMetadata": {
-    ///      "description": "Optional. Immutable normalized media metadata
-    /// explicitly supplied by the client at creation time.",
-    ///      "allOf": [
-    ///        {
-    ///          "$ref": "#/components/schemas/MediaMetadata"
-    ///        }
-    ///      ]
-    ///    },
     ///    "memo": {
     ///      "description": "Optional. The related memo. Refer to `Memo.name`.\n
     /// Format: memos/{memo}",
@@ -128,14 +119,6 @@ pub mod types {
         pub external_link: ::std::option::Option<::std::string::String>,
         ///The filename of the attachment.
         pub filename: ::std::string::String,
-        ///Optional. Immutable normalized media metadata explicitly supplied by
-        /// the client at creation time.
-        #[serde(
-            rename = "mediaMetadata",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub media_metadata: ::std::option::Option<MediaMetadata>,
         ///Optional. The related memo. Refer to `Memo.name`.
         /// Format: memos/{memo}
         #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
@@ -1869,74 +1852,6 @@ pub mod types {
         }
     }
 
-    ///Storage is a configured attachment storage instance.
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "description": "Storage is a configured attachment storage instance.",
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "id": {
-    ///      "description": "id is the stable identifier referenced by
-    /// attachments.",
-    ///      "type": "string"
-    ///    },
-    ///    "name": {
-    ///      "description": "name is the human-readable storage name.",
-    ///      "type": "string"
-    ///    },
-    ///    "s3Config": {
-    ///      "$ref": "#/components/schemas/Storage_S3Config"
-    ///    },
-    ///    "type": {
-    ///      "type": "string",
-    ///      "format": "enum",
-    ///      "enum": [
-    ///        "STORAGE_TYPE_UNSPECIFIED",
-    ///        "DATABASE",
-    ///        "LOCAL",
-    ///        "S3"
-    ///      ]
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct InstanceSettingStorage {
-        ///id is the stable identifier referenced by attachments.
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub id: ::std::option::Option<::std::string::String>,
-        ///name is the human-readable storage name.
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub name: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "s3Config",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub s3_config: ::std::option::Option<StorageS3Config>,
-        #[serde(
-            rename = "type",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub type_: ::std::option::Option<InstanceSettingStorageType>,
-    }
-
-    impl ::std::default::Default for InstanceSettingStorage {
-        fn default() -> Self {
-            Self {
-                id: Default::default(),
-                name: Default::default(),
-                s3_config: Default::default(),
-                type_: Default::default(),
-            }
-        }
-    }
-
     ///Storage configuration settings for instance attachments.
     ///
     /// <details><summary>JSON schema</summary>
@@ -1947,18 +1862,13 @@ pub mod types {
     /// attachments.",
     ///  "type": "object",
     ///  "properties": {
-    ///    "defaultStorageId": {
-    ///      "description": "Storage used for new attachments.",
-    ///      "type": "string"
-    ///    },
     ///    "filepathTemplate": {
     ///      "description": "The template of file path.\n e.g.
     /// assets/{timestamp}_{filename}",
     ///      "type": "string"
     ///    },
     ///    "s3Config": {
-    ///      "description": "Legacy compatibility field. New clients use
-    /// storages.",
+    ///      "description": "The S3 config.",
     ///      "allOf": [
     ///        {
     ///          "$ref": "#/components/schemas/StorageSetting_S3Config"
@@ -1966,8 +1876,7 @@ pub mod types {
     ///      ]
     ///    },
     ///    "storageType": {
-    ///      "description": "Legacy compatibility field. New clients use
-    /// default_storage_id.",
+    ///      "description": "storage_type is the storage type.",
     ///      "type": "string",
     ///      "format": "enum",
     ///      "enum": [
@@ -1976,14 +1885,6 @@ pub mod types {
     ///        "LOCAL",
     ///        "S3"
     ///      ]
-    ///    },
-    ///    "storages": {
-    ///      "description": "Configured storage instances, including inactive
-    /// instances referenced by attachments.",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/InstanceSetting_Storage"
-    ///      }
     ///    },
     ///    "uploadSizeLimitMb": {
     ///      "description": "The max upload size in megabytes.",
@@ -1995,13 +1896,6 @@ pub mod types {
     /// </details>
     #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
     pub struct InstanceSettingStorageSetting {
-        ///Storage used for new attachments.
-        #[serde(
-            rename = "defaultStorageId",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub default_storage_id: ::std::option::Option<::std::string::String>,
         ///The template of file path.
         /// e.g. assets/{timestamp}_{filename}
         #[serde(
@@ -2010,24 +1904,20 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         pub filepath_template: ::std::option::Option<::std::string::String>,
-        ///Legacy compatibility field. New clients use storages.
+        ///The S3 config.
         #[serde(
             rename = "s3Config",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         pub s3_config: ::std::option::Option<StorageSettingS3Config>,
-        ///Legacy compatibility field. New clients use default_storage_id.
+        ///storage_type is the storage type.
         #[serde(
             rename = "storageType",
             default,
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         pub storage_type: ::std::option::Option<InstanceSettingStorageSettingStorageType>,
-        ///Configured storage instances, including inactive instances
-        /// referenced by attachments.
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        pub storages: ::std::vec::Vec<InstanceSettingStorage>,
         ///The max upload size in megabytes.
         #[serde(
             rename = "uploadSizeLimitMb",
@@ -2040,24 +1930,21 @@ pub mod types {
     impl ::std::default::Default for InstanceSettingStorageSetting {
         fn default() -> Self {
             Self {
-                default_storage_id: Default::default(),
                 filepath_template: Default::default(),
                 s3_config: Default::default(),
                 storage_type: Default::default(),
-                storages: Default::default(),
                 upload_size_limit_mb: Default::default(),
             }
         }
     }
 
-    ///Legacy compatibility field. New clients use default_storage_id.
+    ///storage_type is the storage type.
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "description": "Legacy compatibility field. New clients use
-    /// default_storage_id.",
+    ///  "description": "storage_type is the storage type.",
     ///  "type": "string",
     ///  "format": "enum",
     ///  "enum": [
@@ -2132,94 +2019,6 @@ pub mod types {
     }
 
     impl ::std::convert::TryFrom<::std::string::String> for InstanceSettingStorageSettingStorageType {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: ::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    ///`InstanceSettingStorageType`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "string",
-    ///  "format": "enum",
-    ///  "enum": [
-    ///    "STORAGE_TYPE_UNSPECIFIED",
-    ///    "DATABASE",
-    ///    "LOCAL",
-    ///    "S3"
-    ///  ]
-    ///}
-    /// ```
-    /// </details>
-    #[derive(
-        :: serde :: Deserialize,
-        :: serde :: Serialize,
-        Clone,
-        Copy,
-        Debug,
-        Eq,
-        Hash,
-        Ord,
-        PartialEq,
-        PartialOrd,
-    )]
-    pub enum InstanceSettingStorageType {
-        #[serde(rename = "STORAGE_TYPE_UNSPECIFIED")]
-        StorageTypeUnspecified,
-        #[serde(rename = "DATABASE")]
-        Database,
-        #[serde(rename = "LOCAL")]
-        Local,
-        S3,
-    }
-
-    impl ::std::fmt::Display for InstanceSettingStorageType {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            match *self {
-                Self::StorageTypeUnspecified => f.write_str("STORAGE_TYPE_UNSPECIFIED"),
-                Self::Database => f.write_str("DATABASE"),
-                Self::Local => f.write_str("LOCAL"),
-                Self::S3 => f.write_str("S3"),
-            }
-        }
-    }
-
-    impl ::std::str::FromStr for InstanceSettingStorageType {
-        type Err = self::error::ConversionError;
-        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            match value {
-                "STORAGE_TYPE_UNSPECIFIED" => Ok(Self::StorageTypeUnspecified),
-                "DATABASE" => Ok(Self::Database),
-                "LOCAL" => Ok(Self::Local),
-                "S3" => Ok(Self::S3),
-                _ => Err("invalid value".into()),
-            }
-        }
-    }
-
-    impl ::std::convert::TryFrom<&str> for InstanceSettingStorageType {
-        type Error = self::error::ConversionError;
-        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<&::std::string::String> for InstanceSettingStorageType {
-        type Error = self::error::ConversionError;
-        fn try_from(
-            value: &::std::string::String,
-        ) -> ::std::result::Result<Self, self::error::ConversionError> {
-            value.parse()
-        }
-    }
-
-    impl ::std::convert::TryFrom<::std::string::String> for InstanceSettingStorageType {
         type Error = self::error::ConversionError;
         fn try_from(
             value: ::std::string::String,
@@ -3004,44 +2803,6 @@ pub mod types {
         }
     }
 
-    ///`ListMemoViewsResponse`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "memoViews": {
-    ///      "description": "The list of memo views.",
-    ///      "type": "array",
-    ///      "items": {
-    ///        "$ref": "#/components/schemas/MemoView"
-    ///      }
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct ListMemoViewsResponse {
-        ///The list of memo views.
-        #[serde(
-            rename = "memoViews",
-            default,
-            skip_serializing_if = "::std::vec::Vec::is_empty"
-        )]
-        pub memo_views: ::std::vec::Vec<MemoView>,
-    }
-
-    impl ::std::default::Default for ListMemoViewsResponse {
-        fn default() -> Self {
-            Self {
-                memo_views: Default::default(),
-            }
-        }
-    }
-
     ///`ListMemosResponse`
     ///
     /// <details><summary>JSON schema</summary>
@@ -3137,6 +2898,40 @@ pub mod types {
             Self {
                 next_page_token: Default::default(),
                 personal_access_tokens: Default::default(),
+            }
+        }
+    }
+
+    ///`ListShortcutsResponse`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "properties": {
+    ///    "shortcuts": {
+    ///      "description": "The list of shortcuts.",
+    ///      "type": "array",
+    ///      "items": {
+    ///        "$ref": "#/components/schemas/Shortcut"
+    ///      }
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct ListShortcutsResponse {
+        ///The list of shortcuts.
+        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
+        pub shortcuts: ::std::vec::Vec<Shortcut>,
+    }
+
+    impl ::std::default::Default for ListShortcutsResponse {
+        fn default() -> Self {
+            Self {
+                shortcuts: Default::default(),
             }
         }
     }
@@ -3361,146 +3156,6 @@ pub mod types {
                 latitude: Default::default(),
                 longitude: Default::default(),
                 placeholder: Default::default(),
-            }
-        }
-    }
-
-    ///`MediaCaptureTime`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "localDateTime": {
-    ///      "type": "string"
-    ///    },
-    ///    "utcOffset": {
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MediaCaptureTime {
-        #[serde(
-            rename = "localDateTime",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub local_date_time: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "utcOffset",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub utc_offset: ::std::option::Option<::std::string::String>,
-    }
-
-    impl ::std::default::Default for MediaCaptureTime {
-        fn default() -> Self {
-            Self {
-                local_date_time: Default::default(),
-                utc_offset: Default::default(),
-            }
-        }
-    }
-
-    ///`MediaLocation`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "altitudeMeters": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    },
-    ///    "latitude": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    },
-    ///    "longitude": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MediaLocation {
-        #[serde(
-            rename = "altitudeMeters",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub altitude_meters: ::std::option::Option<f64>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub latitude: ::std::option::Option<f64>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub longitude: ::std::option::Option<f64>,
-    }
-
-    impl ::std::default::Default for MediaLocation {
-        fn default() -> Self {
-            Self {
-                altitude_meters: Default::default(),
-                latitude: Default::default(),
-                longitude: Default::default(),
-            }
-        }
-    }
-
-    ///`MediaMetadata`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "height": {
-    ///      "type": "integer",
-    ///      "format": "int32"
-    ///    },
-    ///    "photo": {
-    ///      "$ref": "#/components/schemas/PhotoMetadata"
-    ///    },
-    ///    "video": {
-    ///      "$ref": "#/components/schemas/VideoMetadata"
-    ///    },
-    ///    "width": {
-    ///      "type": "integer",
-    ///      "format": "int32"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MediaMetadata {
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub height: ::std::option::Option<i32>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub photo: ::std::option::Option<PhotoMetadata>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub video: ::std::option::Option<VideoMetadata>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub width: ::std::option::Option<i32>,
-    }
-
-    impl ::std::default::Default for MediaMetadata {
-        fn default() -> Self {
-            Self {
-                height: Default::default(),
-                photo: Default::default(),
-                video: Default::default(),
-                width: Default::default(),
             }
         }
     }
@@ -4181,51 +3836,6 @@ pub mod types {
         }
     }
 
-    ///`MemoView`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "required": [
-    ///    "filter",
-    ///    "title"
-    ///  ],
-    ///  "properties": {
-    ///    "filter": {
-    ///      "description": "The CEL filter expression for the memo view, using
-    /// the same grammar as the\n ListMemos `filter` argument. Reuse it by
-    /// passing this value to ListMemos.",
-    ///      "type": "string"
-    ///    },
-    ///    "name": {
-    ///      "description": "The resource name of the memo view.\n Format:
-    /// users/{user}/views/{view}",
-    ///      "type": "string"
-    ///    },
-    ///    "title": {
-    ///      "description": "The title of the memo view.",
-    ///      "type": "string"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct MemoView {
-        ///The CEL filter expression for the memo view, using the same grammar
-        /// as the ListMemos `filter` argument. Reuse it by passing this
-        /// value to ListMemos.
-        pub filter: ::std::string::String,
-        ///The resource name of the memo view.
-        /// Format: users/{user}/views/{view}
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub name: ::std::option::Option<::std::string::String>,
-        ///The title of the memo view.
-        pub title: ::std::string::String,
-    }
-
     ///The visibility of the memo.
     /// One of PRIVATE (creator only), PROTECTED (signed-in users), or
     /// PUBLIC (anyone). Defaults to PRIVATE on creation when unspecified.
@@ -4874,126 +4484,6 @@ pub mod types {
         }
     }
 
-    ///`PhotoMetadata`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "cameraMake": {
-    ///      "type": "string"
-    ///    },
-    ///    "cameraModel": {
-    ///      "type": "string"
-    ///    },
-    ///    "captureTime": {
-    ///      "$ref": "#/components/schemas/MediaCaptureTime"
-    ///    },
-    ///    "exposureTimeSeconds": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    },
-    ///    "fNumber": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    },
-    ///    "focalLengthMm": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    },
-    ///    "iso": {
-    ///      "type": "integer",
-    ///      "format": "int32"
-    ///    },
-    ///    "lensModel": {
-    ///      "type": "string"
-    ///    },
-    ///    "location": {
-    ///      "$ref": "#/components/schemas/MediaLocation"
-    ///    },
-    ///    "sourceExifOrientation": {
-    ///      "type": "integer",
-    ///      "format": "int32"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct PhotoMetadata {
-        #[serde(
-            rename = "cameraMake",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub camera_make: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "cameraModel",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub camera_model: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "captureTime",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub capture_time: ::std::option::Option<MediaCaptureTime>,
-        #[serde(
-            rename = "exposureTimeSeconds",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub exposure_time_seconds: ::std::option::Option<f64>,
-        #[serde(
-            rename = "fNumber",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub f_number: ::std::option::Option<f64>,
-        #[serde(
-            rename = "focalLengthMm",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub focal_length_mm: ::std::option::Option<f64>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub iso: ::std::option::Option<i32>,
-        #[serde(
-            rename = "lensModel",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub lens_model: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub location: ::std::option::Option<MediaLocation>,
-        #[serde(
-            rename = "sourceExifOrientation",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub source_exif_orientation: ::std::option::Option<i32>,
-    }
-
-    impl ::std::default::Default for PhotoMetadata {
-        fn default() -> Self {
-            Self {
-                camera_make: Default::default(),
-                camera_model: Default::default(),
-                capture_time: Default::default(),
-                exposure_time_seconds: Default::default(),
-                f_number: Default::default(),
-                focal_length_mm: Default::default(),
-                iso: Default::default(),
-                lens_model: Default::default(),
-                location: Default::default(),
-                source_exif_orientation: Default::default(),
-            }
-        }
-    }
-
     ///`Reaction`
     ///
     /// <details><summary>JSON schema</summary>
@@ -5224,6 +4714,51 @@ pub mod types {
         pub name: ::std::string::String,
         ///Required. The relations to set for the memo.
         pub relations: ::std::vec::Vec<MemoRelation>,
+    }
+
+    ///`Shortcut`
+    ///
+    /// <details><summary>JSON schema</summary>
+    ///
+    /// ```json
+    ///{
+    ///  "type": "object",
+    ///  "required": [
+    ///    "title"
+    ///  ],
+    ///  "properties": {
+    ///    "filter": {
+    ///      "description": "The CEL filter expression for the shortcut, using
+    /// the same grammar as the\n ListMemos `filter` argument. Reuse it by
+    /// passing this value to ListMemos.",
+    ///      "type": "string"
+    ///    },
+    ///    "name": {
+    ///      "description": "The resource name of the shortcut.\n Format:
+    /// users/{user}/shortcuts/{shortcut}",
+    ///      "type": "string"
+    ///    },
+    ///    "title": {
+    ///      "description": "The title of the shortcut.",
+    ///      "type": "string"
+    ///    }
+    ///  }
+    ///}
+    /// ```
+    /// </details>
+    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
+    pub struct Shortcut {
+        ///The CEL filter expression for the shortcut, using the same grammar
+        /// as the ListMemos `filter` argument. Reuse it by passing this
+        /// value to ListMemos.
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub filter: ::std::option::Option<::std::string::String>,
+        ///The resource name of the shortcut.
+        /// Format: users/{user}/shortcuts/{shortcut}
+        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
+        pub name: ::std::option::Option<::std::string::String>,
+        ///The title of the shortcut.
+        pub title: ::std::string::String,
     }
 
     ///`SignInRequest`
@@ -5502,106 +5037,14 @@ pub mod types {
         }
     }
 
-    ///S3 configuration for an S3-compatible object store.
+    ///S3 configuration for cloud storage backend.
     /// Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/
     ///
     /// <details><summary>JSON schema</summary>
     ///
     /// ```json
     ///{
-    ///  "description": "S3 configuration for an S3-compatible object store.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "accessKeyId": {
-    ///      "type": "string"
-    ///    },
-    ///    "accessKeySecret": {
-    ///      "writeOnly": true,
-    ///      "type": "string"
-    ///    },
-    ///    "bucket": {
-    ///      "type": "string"
-    ///    },
-    ///    "endpoint": {
-    ///      "type": "string"
-    ///    },
-    ///    "insecureSkipTlsVerify": {
-    ///      "description": "insecure_skip_tls_verify disables TLS certificate
-    /// verification when connecting\n to the S3 endpoint. Only enable this for
-    /// trusted endpoints that use a self-signed\n certificate; it removes
-    /// protection against man-in-the-middle attacks.",
-    ///      "type": "boolean"
-    ///    },
-    ///    "region": {
-    ///      "type": "string"
-    ///    },
-    ///    "usePathStyle": {
-    ///      "type": "boolean"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct StorageS3Config {
-        #[serde(
-            rename = "accessKeyId",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub access_key_id: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "accessKeySecret",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub access_key_secret: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub bucket: ::std::option::Option<::std::string::String>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub endpoint: ::std::option::Option<::std::string::String>,
-        ///insecure_skip_tls_verify disables TLS certificate verification when
-        /// connecting to the S3 endpoint. Only enable this for trusted
-        /// endpoints that use a self-signed certificate; it removes
-        /// protection against man-in-the-middle attacks.
-        #[serde(
-            rename = "insecureSkipTlsVerify",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub insecure_skip_tls_verify: ::std::option::Option<bool>,
-        #[serde(default, skip_serializing_if = "::std::option::Option::is_none")]
-        pub region: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "usePathStyle",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub use_path_style: ::std::option::Option<bool>,
-    }
-
-    impl ::std::default::Default for StorageS3Config {
-        fn default() -> Self {
-            Self {
-                access_key_id: Default::default(),
-                access_key_secret: Default::default(),
-                bucket: Default::default(),
-                endpoint: Default::default(),
-                insecure_skip_tls_verify: Default::default(),
-                region: Default::default(),
-                use_path_style: Default::default(),
-            }
-        }
-    }
-
-    ///Legacy S3 configuration retained for compatibility with existing
-    /// clients. Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "description": "Legacy S3 configuration retained for compatibility with existing clients.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
+    ///  "description": "S3 configuration for cloud storage backend.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
     ///  "type": "object",
     ///  "properties": {
     ///    "accessKeyId": {
@@ -6731,11 +6174,6 @@ pub mod types {
     ///      "description": "The default visibility of the memo.",
     ///      "type": "string"
     ///    },
-    ///    "saveMediaMetadata": {
-    ///      "description": "Whether the official client should save metadata
-    /// from future media uploads.",
-    ///      "type": "boolean"
-    ///    },
     ///    "theme": {
     ///      "description": "The preferred theme of the user.\n This references
     /// a CSS file in the web/public/themes/ directory.\n If not set, the
@@ -6758,14 +6196,6 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none"
         )]
         pub memo_visibility: ::std::option::Option<::std::string::String>,
-        ///Whether the official client should save metadata from future media
-        /// uploads.
-        #[serde(
-            rename = "saveMediaMetadata",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub save_media_metadata: ::std::option::Option<bool>,
         ///The preferred theme of the user.
         /// This references a CSS file in the web/public/themes/ directory.
         /// If not set, the default theme will be used.
@@ -6778,7 +6208,6 @@ pub mod types {
             Self {
                 locale: Default::default(),
                 memo_visibility: Default::default(),
-                save_media_metadata: Default::default(),
                 theme: Default::default(),
             }
         }
@@ -7309,40 +6738,6 @@ pub mod types {
             }
         }
     }
-
-    ///`VideoMetadata`
-    ///
-    /// <details><summary>JSON schema</summary>
-    ///
-    /// ```json
-    ///{
-    ///  "type": "object",
-    ///  "properties": {
-    ///    "durationSeconds": {
-    ///      "type": "number",
-    ///      "format": "double"
-    ///    }
-    ///  }
-    ///}
-    /// ```
-    /// </details>
-    #[derive(:: serde :: Deserialize, :: serde :: Serialize, Clone, Debug)]
-    pub struct VideoMetadata {
-        #[serde(
-            rename = "durationSeconds",
-            default,
-            skip_serializing_if = "::std::option::Option::is_none"
-        )]
-        pub duration_seconds: ::std::option::Option<f64>,
-    }
-
-    impl ::std::default::Default for VideoMetadata {
-        fn default() -> Self {
-            Self {
-                duration_seconds: Default::default(),
-            }
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -7350,6 +6745,7 @@ pub mod types {
 ///
 ///Version: 0.0.1
 pub struct Client {
+    pub(crate) authorization: crate::auth::AuthorizationState,
     pub(crate) baseurl: String,
     pub(crate) client: reqwest::Client,
 }
@@ -7381,6 +6777,7 @@ impl Client {
     /// as well as port and a path stem if applicable.
     pub fn new_with_client(baseurl: &str, client: reqwest::Client) -> Self {
         Self {
+            authorization: Default::default(),
             baseurl: baseurl.to_string(),
             client,
         }
@@ -8151,6 +7548,101 @@ impl Client {
         }
     }
 
+    ///Gets an instance setting.
+    ///
+    ///Sends a `GET` request to `/api/v1/instance/settings/{instance}`
+    ///
+    ///Arguments:
+    /// - `instance`: The instance id.
+    pub async fn instance_service_get_instance_setting<'a>(
+        &'a self,
+        instance: &'a str,
+    ) -> Result<ResponseValue<types::InstanceSetting>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/instance/settings/{}",
+            self.baseurl,
+            encode_path(&instance.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "instance_service_get_instance_setting",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
+    ///Updates an instance setting.
+    ///
+    ///Sends a `PATCH` request to `/api/v1/instance/settings/{instance}`
+    ///
+    ///Arguments:
+    /// - `instance`: The instance id.
+    /// - `update_mask`: The list of fields to update.
+    /// - `body`
+    pub async fn instance_service_update_instance_setting<'a>(
+        &'a self,
+        instance: &'a str,
+        update_mask: Option<&'a str>,
+        body: &'a types::InstanceSetting,
+    ) -> Result<ResponseValue<types::InstanceSetting>, Error<()>> {
+        let url = format!(
+            "{}/api/v1/instance/settings/{}",
+            self.baseurl,
+            encode_path(&instance.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .patch(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .query(&progenitor_client::QueryParam::new(
+                "updateMask",
+                &update_mask,
+            ))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "instance_service_update_instance_setting",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+
     ///Batch gets instance settings.
     ///
     ///Sends a `POST` request to `/api/v1/instance/settings:batchGet`
@@ -8224,101 +7716,6 @@ impl Client {
         }
     }
 
-    ///Gets an instance setting.
-    ///
-    ///Sends a `GET` request to `/api/v1/instance/{instance}/*`
-    ///
-    ///Arguments:
-    /// - `instance`: The instance id.
-    pub async fn instance_service_get_instance_setting<'a>(
-        &'a self,
-        instance: &'a str,
-    ) -> Result<ResponseValue<types::InstanceSetting>, Error<()>> {
-        let url = format!(
-            "{}/api/v1/instance/{}/*",
-            self.baseurl,
-            encode_path(&instance.to_string()),
-        );
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .get(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "instance_service_get_instance_setting",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-
-    ///Updates an instance setting.
-    ///
-    ///Sends a `PATCH` request to `/api/v1/instance/{instance}/*`
-    ///
-    ///Arguments:
-    /// - `instance`: The instance id.
-    /// - `update_mask`: The list of fields to update.
-    /// - `body`
-    pub async fn instance_service_update_instance_setting<'a>(
-        &'a self,
-        instance: &'a str,
-        update_mask: Option<&'a str>,
-        body: &'a types::InstanceSetting,
-    ) -> Result<ResponseValue<types::InstanceSetting>, Error<()>> {
-        let url = format!(
-            "{}/api/v1/instance/{}/*",
-            self.baseurl,
-            encode_path(&instance.to_string()),
-        );
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .patch(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .json(&body)
-            .query(&progenitor_client::QueryParam::new(
-                "updateMask",
-                &update_mask,
-            ))
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "instance_service_update_instance_setting",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-
     ///ListMemos lists memos with pagination and filter.
     ///
     ///Sends a `GET` request to `/api/v1/memos`
@@ -8331,8 +7728,7 @@ impl Client {
     ///   created_ts / updated_ts (timestamp), pinned (bool),
     ///   visibility (string: PRIVATE | PROTECTED | PUBLIC),
     ///   tags (list<string>; match with `"work" in tags`, not `tag == "work"`),
-    ///   has_task_list / has_link / has_code / has_incomplete_tasks (bool),
-    ///   has_location (bool; true when the memo has a location attached).
+    ///   has_task_list / has_link / has_code / has_incomplete_tasks (bool).
     /// Note: the time fields here are created_ts / updated_ts, which differ
     /// from the create_time / update_time names used by order_by.
     /// Examples:
@@ -9354,8 +8750,8 @@ impl Client {
     /// requests to create a user have the same result.
     /// - `user_id`: Optional. The resource ID to use for this user. If set, it
     ///   must equal
-    /// user.username and follow the username format.
-    /// Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$
+    /// user.username, follow the UID format, and not consist entirely of
+    /// digits. Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$
     /// - `validate_only`: Optional. If set, validate the request but don't
     ///   actually create the user.
     /// - `body`
@@ -10178,20 +9574,21 @@ impl Client {
         }
     }
 
-    ///ListMemoViews returns a user's memo views. Each view is a named,
-    /// reusable CEL filter (see MemoView.filter); pass its filter string
-    /// directly to the ListMemos `filter` argument.
+    ///ListShortcuts returns a user's saved shortcuts. Each shortcut is a
+    /// named, reusable CEL filter (see Shortcut.filter); pass its filter
+    /// string directly to the ListMemos `filter` argument to reuse a saved
+    /// view.
     ///
-    ///Sends a `GET` request to `/api/v1/users/{user}/views`
+    ///Sends a `GET` request to `/api/v1/users/{user}/shortcuts`
     ///
     ///Arguments:
     /// - `user`: The user id.
-    pub async fn memo_view_service_list_memo_views<'a>(
+    pub async fn shortcut_service_list_shortcuts<'a>(
         &'a self,
         user: &'a str,
-    ) -> Result<ResponseValue<types::ListMemoViewsResponse>, Error<()>> {
+    ) -> Result<ResponseValue<types::ListShortcutsResponse>, Error<()>> {
         let url = format!(
-            "{}/api/v1/users/{}/views",
+            "{}/api/v1/users/{}/shortcuts",
             self.baseurl,
             encode_path(&user.to_string()),
         );
@@ -10211,7 +9608,7 @@ impl Client {
             .headers(header_map)
             .build()?;
         let info = OperationInfo {
-            operation_id: "memo_view_service_list_memo_views",
+            operation_id: "shortcut_service_list_shortcuts",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;
@@ -10223,23 +9620,23 @@ impl Client {
         }
     }
 
-    ///CreateMemoView creates a new memo view for a user.
+    ///CreateShortcut creates a new shortcut for a user.
     ///
-    ///Sends a `POST` request to `/api/v1/users/{user}/views`
+    ///Sends a `POST` request to `/api/v1/users/{user}/shortcuts`
     ///
     ///Arguments:
     /// - `user`: The user id.
     /// - `validate_only`: Optional. If set, validate the request, but do not
-    ///   actually create the memo view.
+    ///   actually create the shortcut.
     /// - `body`
-    pub async fn memo_view_service_create_memo_view<'a>(
+    pub async fn shortcut_service_create_shortcut<'a>(
         &'a self,
         user: &'a str,
         validate_only: Option<bool>,
-        body: &'a types::MemoView,
-    ) -> Result<ResponseValue<types::MemoView>, Error<()>> {
+        body: &'a types::Shortcut,
+    ) -> Result<ResponseValue<types::Shortcut>, Error<()>> {
         let url = format!(
-            "{}/api/v1/users/{}/views",
+            "{}/api/v1/users/{}/shortcuts",
             self.baseurl,
             encode_path(&user.to_string()),
         );
@@ -10264,7 +9661,7 @@ impl Client {
             .headers(header_map)
             .build()?;
         let info = OperationInfo {
-            operation_id: "memo_view_service_create_memo_view",
+            operation_id: "shortcut_service_create_shortcut",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;
@@ -10276,23 +9673,23 @@ impl Client {
         }
     }
 
-    ///GetMemoView gets a memo view by name.
+    ///GetShortcut gets a shortcut by name.
     ///
-    ///Sends a `GET` request to `/api/v1/users/{user}/views/{view}`
+    ///Sends a `GET` request to `/api/v1/users/{user}/shortcuts/{shortcut}`
     ///
     ///Arguments:
     /// - `user`: The user id.
-    /// - `view`: The view id.
-    pub async fn memo_view_service_get_memo_view<'a>(
+    /// - `shortcut`: The shortcut id.
+    pub async fn shortcut_service_get_shortcut<'a>(
         &'a self,
         user: &'a str,
-        view: &'a str,
-    ) -> Result<ResponseValue<types::MemoView>, Error<()>> {
+        shortcut: &'a str,
+    ) -> Result<ResponseValue<types::Shortcut>, Error<()>> {
         let url = format!(
-            "{}/api/v1/users/{}/views/{}",
+            "{}/api/v1/users/{}/shortcuts/{}",
             self.baseurl,
             encode_path(&user.to_string()),
-            encode_path(&view.to_string()),
+            encode_path(&shortcut.to_string()),
         );
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -10310,7 +9707,7 @@ impl Client {
             .headers(header_map)
             .build()?;
         let info = OperationInfo {
-            operation_id: "memo_view_service_get_memo_view",
+            operation_id: "shortcut_service_get_shortcut",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;
@@ -10322,23 +9719,23 @@ impl Client {
         }
     }
 
-    ///DeleteMemoView deletes a memo view for a user.
+    ///DeleteShortcut deletes a shortcut for a user.
     ///
-    ///Sends a `DELETE` request to `/api/v1/users/{user}/views/{view}`
+    ///Sends a `DELETE` request to `/api/v1/users/{user}/shortcuts/{shortcut}`
     ///
     ///Arguments:
     /// - `user`: The user id.
-    /// - `view`: The view id.
-    pub async fn memo_view_service_delete_memo_view<'a>(
+    /// - `shortcut`: The shortcut id.
+    pub async fn shortcut_service_delete_shortcut<'a>(
         &'a self,
         user: &'a str,
-        view: &'a str,
+        shortcut: &'a str,
     ) -> Result<ResponseValue<()>, Error<()>> {
         let url = format!(
-            "{}/api/v1/users/{}/views/{}",
+            "{}/api/v1/users/{}/shortcuts/{}",
             self.baseurl,
             encode_path(&user.to_string()),
-            encode_path(&view.to_string()),
+            encode_path(&shortcut.to_string()),
         );
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -10348,7 +9745,7 @@ impl Client {
         #[allow(unused_mut)]
         let mut request = self.client.delete(url).headers(header_map).build()?;
         let info = OperationInfo {
-            operation_id: "memo_view_service_delete_memo_view",
+            operation_id: "shortcut_service_delete_shortcut",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;
@@ -10360,27 +9757,27 @@ impl Client {
         }
     }
 
-    ///UpdateMemoView updates a memo view for a user.
+    ///UpdateShortcut updates a shortcut for a user.
     ///
-    ///Sends a `PATCH` request to `/api/v1/users/{user}/views/{view}`
+    ///Sends a `PATCH` request to `/api/v1/users/{user}/shortcuts/{shortcut}`
     ///
     ///Arguments:
     /// - `user`: The user id.
-    /// - `view`: The view id.
+    /// - `shortcut`: The shortcut id.
     /// - `update_mask`: Optional. The list of fields to update.
     /// - `body`
-    pub async fn memo_view_service_update_memo_view<'a>(
+    pub async fn shortcut_service_update_shortcut<'a>(
         &'a self,
         user: &'a str,
-        view: &'a str,
+        shortcut: &'a str,
         update_mask: Option<&'a str>,
-        body: &'a types::MemoView,
-    ) -> Result<ResponseValue<types::MemoView>, Error<()>> {
+        body: &'a types::Shortcut,
+    ) -> Result<ResponseValue<types::Shortcut>, Error<()>> {
         let url = format!(
-            "{}/api/v1/users/{}/views/{}",
+            "{}/api/v1/users/{}/shortcuts/{}",
             self.baseurl,
             encode_path(&user.to_string()),
-            encode_path(&view.to_string()),
+            encode_path(&shortcut.to_string()),
         );
         let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
         header_map.append(
@@ -10403,7 +9800,7 @@ impl Client {
             .headers(header_map)
             .build()?;
         let info = OperationInfo {
-            operation_id: "memo_view_service_update_memo_view",
+            operation_id: "shortcut_service_update_shortcut",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;

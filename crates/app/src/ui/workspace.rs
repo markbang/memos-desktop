@@ -1,22 +1,29 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, rc::Rc};
+
+use serde::{Serialize, de::DeserializeOwned};
 
 use chrono::{DateTime, Local, Utc};
 use gpui::{
-    AnyElement, Context, InteractiveElement as _, IntoElement, ParentElement as _,
-    StatefulInteractiveElement as _, Styled, Window, div, prelude::FluentBuilder as _, px,
+    AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement, ObjectFit,
+    ParentElement as _, StatefulInteractiveElement as _, Styled, StyledImage as _, Window, div,
+    img, prelude::FluentBuilder as _, px,
 };
 use gpui_component::{
     Disableable, Icon, IconName, Sizable, StyledExt, WindowExt as _,
     button::{Button, ButtonVariants as _},
+    checkbox::Checkbox,
     h_flex,
-    input::Input,
+    input::{Input, InputState},
     scroll::ScrollableElement,
+    spinner::Spinner,
     text::TextView,
     v_flex,
 };
-use memos_api::types::{Memo, MemoState, MemoVisibility};
+use memos_api::types::{Memo, MemoState, MemoVisibility, Shortcut, UserRole};
 
-use super::{DetailTab, MemosDesktop, QuickFilter, Route};
+use super::{
+    DetailTab, MemosDesktop, QuickFilter, Route, SettingsSection, external_attachment_url,
+};
 use crate::theme;
 
 impl MemosDesktop {
@@ -25,8 +32,10 @@ impl MemosDesktop {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let show_inspector = matches!(self.route, Route::Timeline | Route::Archive)
-            && self.selected_memo().is_some();
+        let show_inspector = matches!(
+            self.route,
+            Route::Timeline | Route::Archive | Route::Explore | Route::Profile
+        ) && self.selected_memo().is_some();
 
         h_flex()
             .id("workspace")
@@ -119,10 +128,15 @@ impl MemosDesktop {
 
     fn nav_button(&self, route: Route, icon: IconName, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = self.route == route;
+        let requires_auth = matches!(
+            route,
+            Route::Views | Route::Archive | Route::Attachments | Route::Inbox | Route::Settings
+        );
         let view = cx.entity().clone();
         Button::new(gpui::SharedString::from(format!("nav-{:?}", route)))
             .ghost()
             .large()
+            .disabled(requires_auth && self.current_user.is_none())
             .icon(Icon::new(icon).size_4())
             .tooltip(route.title())
             .when(selected, |button| button.primary())
@@ -312,15 +326,105 @@ impl MemosDesktop {
     }
 
     fn render_content(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        match self.route {
-            Route::Timeline | Route::Archive | Route::Explore => {
+        let module_route = matches!(
+            self.route,
+            Route::Views | Route::Attachments | Route::Inbox | Route::Settings | Route::Profile
+        );
+        if self.module_loading && module_route {
+            return v_flex()
+                .flex_1()
+                .h_full()
+                .items_center()
+                .justify_center()
+                .gap_3()
+                .child(Spinner::new().large())
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme::graphite())
+                        .child("Loading from Memos..."),
+                )
+                .into_any_element();
+        }
+        let content = match self.route {
+            Route::Timeline | Route::Archive | Route::Explore | Route::Profile => {
                 self.render_timeline_content(window, cx)
             }
             Route::Views => self.render_views_page(cx),
             Route::Attachments => self.render_attachments_page(cx),
             Route::Inbox => self.render_inbox_page(cx),
             Route::Settings => self.render_settings_page(cx),
+        };
+        if !module_route {
+            return content;
         }
+
+        let error = self.error.clone();
+        let notice = self.notice.clone();
+        let dismiss_error = cx.entity().clone();
+        let dismiss_notice = cx.entity().clone();
+        v_flex()
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .when_some(error, |page, error| {
+                page.child(
+                    h_flex()
+                        .px_4()
+                        .py_2()
+                        .gap_2()
+                        .items_center()
+                        .border_b_1()
+                        .border_color(theme::color(0xe1b6b1))
+                        .bg(theme::color(0xfff4f2))
+                        .text_sm()
+                        .text_color(theme::color(0x9c3028))
+                        .child(Icon::new(IconName::TriangleAlert).size_4())
+                        .child(div().flex_1().min_w_0().child(error))
+                        .child(
+                            Button::new("dismiss-module-error")
+                                .ghost()
+                                .icon(IconName::Close)
+                                .tooltip("Dismiss")
+                                .on_click(move |_, _, cx| {
+                                    dismiss_error.update(cx, |this, cx| {
+                                        this.error = None;
+                                        cx.notify();
+                                    });
+                                }),
+                        ),
+                )
+            })
+            .when_some(notice, |page, notice| {
+                page.child(
+                    h_flex()
+                        .px_4()
+                        .py_2()
+                        .gap_2()
+                        .items_center()
+                        .border_b_1()
+                        .border_color(theme::line())
+                        .bg(theme::color(0xf1f6ef))
+                        .text_sm()
+                        .text_color(theme::color(0x285a38))
+                        .child(Icon::new(IconName::CircleCheck).size_4())
+                        .child(div().flex_1().min_w_0().child(notice))
+                        .child(
+                            Button::new("dismiss-module-notice")
+                                .ghost()
+                                .icon(IconName::Close)
+                                .tooltip("Dismiss")
+                                .on_click(move |_, _, cx| {
+                                    dismiss_notice.update(cx, |this, cx| {
+                                        this.notice = None;
+                                        cx.notify();
+                                    });
+                                }),
+                        ),
+                )
+            })
+            .child(content)
+            .into_any_element()
     }
 
     fn render_timeline_content(
@@ -330,16 +434,40 @@ impl MemosDesktop {
     ) -> AnyElement {
         let memos = self.visible_memos();
         let count = memos.len();
-        let title = self.route.title();
+        let title = if self.route == Route::Profile {
+            self.profile_user
+                .as_ref()
+                .and_then(|user| user.display_name.clone())
+                .or_else(|| self.profile_user.as_ref().map(|user| user.username.clone()))
+                .unwrap_or_else(|| "Profile".into())
+        } else {
+            self.route.title().to_string()
+        };
         let subtitle = match self.route {
-            Route::Timeline => "Private working stream",
-            Route::Archive => "Memos outside the active stream",
-            Route::Explore => "Visible memos from this instance",
-            _ => "",
+            Route::Timeline if self.current_user.is_some() => "Private working stream".to_string(),
+            Route::Timeline => "Public memos from this instance".to_string(),
+            Route::Archive => "Memos outside the active stream".to_string(),
+            Route::Explore => "Visible memos from this instance".to_string(),
+            Route::Profile => self
+                .profile_user
+                .as_ref()
+                .map(|user| {
+                    let total = self
+                        .profile_stats
+                        .as_ref()
+                        .and_then(|stats| stats.total_memo_count)
+                        .unwrap_or(count as i32);
+                    let description = user.description.as_deref().unwrap_or("Public activity");
+                    format!("@{} · {total} memos · {description}", user.username)
+                })
+                .unwrap_or_else(|| "Public activity for this user".into()),
+            _ => String::new(),
         };
         let is_timeline = self.route == Route::Timeline;
         let can_create = is_timeline && self.current_user.is_some();
         let loading = self.loading;
+        let loading_more = self.loading_more;
+        let has_more = self.next_memo_page_token.is_some();
         let error = self.error.clone();
 
         v_flex()
@@ -416,6 +544,15 @@ impl MemosDesktop {
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
+                    .when(memos.is_empty() && loading, |list| {
+                        list.child(
+                            v_flex()
+                                .min_h(px(220.0))
+                                .items_center()
+                                .justify_center()
+                                .child(Spinner::new().large()),
+                        )
+                    })
                     .when(memos.is_empty() && !loading, |list| {
                         list.child(empty_state(
                             IconName::BookOpen,
@@ -423,7 +560,20 @@ impl MemosDesktop {
                             "Change the filter or capture a new memo.",
                         ))
                     })
-                    .children(memos.into_iter().map(|memo| self.render_memo_row(memo, cx))),
+                    .children(memos.into_iter().map(|memo| self.render_memo_row(memo, cx)))
+                    .when(has_more, |list| {
+                        list.child(
+                            h_flex().w_full().justify_center().p_4().child(
+                                Button::new("load-more-memos")
+                                    .outline()
+                                    .label("Load more")
+                                    .loading(loading_more)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.load_more_memos(cx);
+                                    })),
+                            ),
+                        )
+                    }),
             )
             .into_any_element()
     }
@@ -473,7 +623,16 @@ impl MemosDesktop {
                                 IconName::Globe,
                                 "Public",
                                 cx,
-                            )),
+                            ))
+                            .child(
+                                Button::new("transcribe-audio")
+                                    .ghost()
+                                    .icon(IconName::Bot)
+                                    .tooltip("Transcribe audio")
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.transcribe_into_composer(window, cx);
+                                    })),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -521,10 +680,18 @@ impl MemosDesktop {
             })
     }
 
+    fn can_manage_memo(&self, memo: &Memo) -> bool {
+        self.current_user.as_ref().is_some_and(|user| {
+            user.role == UserRole::Admin || memo.creator.as_deref() == user.name.as_deref()
+        })
+    }
+
     fn render_memo_row(&self, memo: Memo, cx: &mut Context<Self>) -> AnyElement {
         let name = memo.name.clone().unwrap_or_else(|| "memos/unknown".into());
         let selected = self.selected_memo_name.as_deref() == Some(name.as_str());
         let view = cx.entity().clone();
+        let profile_view = cx.entity().clone();
+        let creator = memo.creator.clone();
         let title = memo
             .property
             .as_ref()
@@ -602,6 +769,25 @@ impl MemosDesktop {
                             .gap_3()
                             .text_xs()
                             .text_color(theme::graphite())
+                            .when_some(creator, |metadata, creator| {
+                                let label = format!("@{}", resource_id(&creator));
+                                metadata.child(
+                                    Button::new(gpui::SharedString::from(format!(
+                                        "memo-creator-{creator}"
+                                    )))
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::User)
+                                    .label(label)
+                                    .on_click(
+                                        move |_, _, cx| {
+                                            profile_view.update(cx, |this, cx| {
+                                                this.open_user_profile(creator.clone(), cx);
+                                            });
+                                        },
+                                    ),
+                                )
+                            })
                             .child(visibility)
                             .when(!memo.attachments.is_empty(), |metadata| {
                                 metadata.child(format!("{} attachments", memo.attachments.len()))
@@ -612,6 +798,198 @@ impl MemosDesktop {
                     ),
             )
             .into_any_element()
+    }
+
+    fn open_edit_memo_dialog(&self, memo: Memo, window: &mut Window, cx: &mut Context<Self>) {
+        let memo_name = memo.name.clone().unwrap_or_default();
+        let create_time_value = memo
+            .create_time
+            .map(|time| time.to_rfc3339())
+            .unwrap_or_default();
+        let editor = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .rows(18)
+                .default_value(memo.content)
+        });
+        let create_time = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Creation time (RFC3339)")
+                .default_value(create_time_value)
+        });
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let editor = editor.clone();
+            let create_time = create_time.clone();
+            let view = view.clone();
+            let memo_name = memo_name.clone();
+            dialog
+                .title("Edit memo")
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&create_time))
+                        .child(Input::new(&editor).h(px(420.0))),
+                )
+                .footer(move |_, _, _, _| {
+                    let editor = editor.clone();
+                    let create_time = create_time.clone();
+                    let view = view.clone();
+                    let memo_name = memo_name.clone();
+                    vec![
+                        Button::new("save-memo-edit")
+                            .primary()
+                            .label("Save")
+                            .on_click(move |_, window, cx| {
+                                let content = editor.read(cx).value().to_string();
+                                let create_time = create_time.read(cx).value().trim().to_string();
+                                let create_time = if create_time.is_empty() {
+                                    None
+                                } else {
+                                    let time =
+                                        match chrono::DateTime::parse_from_rfc3339(&create_time) {
+                                            Ok(time) => time,
+                                            Err(error) => {
+                                                window.close_dialog(cx);
+                                                view.update(cx, |this, cx| {
+                                                    this.error = Some(format!(
+                                                        "Creation time must be RFC3339: {error}"
+                                                    ));
+                                                    cx.notify();
+                                                });
+                                                return;
+                                            }
+                                        };
+                                    Some(time.with_timezone(&Utc))
+                                };
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.update_memo_content(
+                                        memo_name.clone(),
+                                        content,
+                                        create_time,
+                                        cx,
+                                    );
+                                });
+                            }),
+                        Button::new("cancel-memo-edit")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn open_location_dialog(&self, memo: Memo, window: &mut Window, cx: &mut Context<Self>) {
+        let memo_name = memo.name.clone().unwrap_or_default();
+        let placeholder = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Location label")
+                .default_value(
+                    memo.location
+                        .as_ref()
+                        .and_then(|location| location.placeholder.clone())
+                        .unwrap_or_default(),
+                )
+        });
+        let latitude = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Latitude")
+                .default_value(
+                    memo.location
+                        .as_ref()
+                        .and_then(|location| location.latitude)
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                )
+        });
+        let longitude = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Longitude")
+                .default_value(
+                    memo.location
+                        .as_ref()
+                        .and_then(|location| location.longitude)
+                        .map(|value| value.to_string())
+                        .unwrap_or_default(),
+                )
+        });
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let placeholder = placeholder.clone();
+            let latitude = latitude.clone();
+            let longitude = longitude.clone();
+            let view = view.clone();
+            let memo_name = memo_name.clone();
+            dialog
+                .title("Memo location")
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&placeholder))
+                        .child(Input::new(&latitude))
+                        .child(Input::new(&longitude)),
+                )
+                .footer(move |_, _, _, _| {
+                    let placeholder = placeholder.clone();
+                    let latitude = latitude.clone();
+                    let longitude = longitude.clone();
+                    let save_view = view.clone();
+                    let remove_view = view.clone();
+                    let save_name = memo_name.clone();
+                    let remove_name = memo_name.clone();
+                    vec![
+                        Button::new("save-location")
+                            .primary()
+                            .label("Save")
+                            .on_click(move |_, window, cx| {
+                                let latitude = latitude.read(cx).value().parse::<f64>().ok();
+                                let longitude = longitude.read(cx).value().parse::<f64>().ok();
+                                if latitude.is_some() != longitude.is_some()
+                                    || latitude
+                                        .is_some_and(|value| !(-90.0..=90.0).contains(&value))
+                                    || longitude
+                                        .is_some_and(|value| !(-180.0..=180.0).contains(&value))
+                                {
+                                    window.close_dialog(cx);
+                                    save_view.update(cx, |this, cx| {
+                                        this.error = Some(
+                                            "Latitude must be -90..90 and longitude -180..180."
+                                                .into(),
+                                        );
+                                        cx.notify();
+                                    });
+                                    return;
+                                }
+                                let location = memos_api::types::Location {
+                                    latitude,
+                                    longitude,
+                                    placeholder: non_empty_text(placeholder.read(cx).value()),
+                                };
+                                window.close_dialog(cx);
+                                save_view.update(cx, |this, cx| {
+                                    this.update_memo_location(
+                                        save_name.clone(),
+                                        Some(location.clone()),
+                                        cx,
+                                    );
+                                });
+                            }),
+                        Button::new("remove-location")
+                            .danger()
+                            .label("Remove")
+                            .on_click(move |_, window, cx| {
+                                window.close_dialog(cx);
+                                remove_view.update(cx, |this, cx| {
+                                    this.update_memo_location(remove_name.clone(), None, cx);
+                                });
+                            }),
+                        Button::new("cancel-location")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
     }
 
     fn render_inspector(&self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -628,11 +1006,16 @@ impl MemosDesktop {
             })
             .unwrap_or_else(|| "Unknown time".into());
         let view = cx.entity().clone();
+        let edit_view = cx.entity().clone();
+        let edit_memo = memo.clone();
+        let location_view = cx.entity().clone();
+        let location_memo = memo.clone();
         let pin_name = name.clone();
         let archive_name = name.clone();
         let delete_name = name.clone();
         let is_archived = memo.state == MemoState::Archived;
         let is_pinned = memo.pinned.unwrap_or(false);
+        let can_manage = self.can_manage_memo(&memo);
 
         v_flex()
             .id("inspector")
@@ -713,87 +1096,122 @@ impl MemosDesktop {
                             },
                         )))
                     })
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .pt_3()
-                            .border_t_1()
-                            .border_color(theme::line())
-                            .child(
-                                Button::new("toggle-pin")
-                                    .small()
-                                    .ghost()
-                                    .icon(if is_pinned {
-                                        IconName::StarOff
-                                    } else {
-                                        IconName::Star
-                                    })
-                                    .tooltip(if is_pinned { "Unpin" } else { "Pin" })
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |this, cx| {
-                                            this.toggle_pin(pin_name.clone(), cx);
-                                        });
-                                    }),
-                            )
-                            .child({
-                                let view = cx.entity().clone();
-                                Button::new("toggle-archive")
-                                    .small()
-                                    .ghost()
-                                    .icon(IconName::FolderClosed)
-                                    .tooltip(if is_archived { "Restore" } else { "Archive" })
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |this, cx| {
-                                            this.toggle_archive(archive_name.clone(), cx);
-                                        });
-                                    })
-                            })
-                            .child({
-                                let view = cx.entity().clone();
-                                Button::new("delete-memo")
-                                    .small()
-                                    .danger()
-                                    .icon(IconName::Delete)
-                                    .tooltip("Delete")
-                                    .on_click(move |_, window, cx| {
-                                        let view = view.clone();
-                                        let memo_name = delete_name.clone();
-                                        window.open_dialog(cx, move |dialog, _, _| {
-                                            let confirm_view = view.clone();
-                                            let confirm_name = memo_name.clone();
-                                            dialog
-                                                .title("Delete memo")
-                                                .child("This memo will be permanently deleted.")
-                                                .footer(move |_, _, _, _| {
-                                                    let confirm_view = confirm_view.clone();
-                                                    let confirm_name = confirm_name.clone();
-                                                    vec![
-                                                        Button::new("confirm-delete")
-                                                            .danger()
-                                                            .label("Delete")
-                                                            .on_click(move |_, window, cx| {
-                                                                window.close_dialog(cx);
-                                                                confirm_view.update(
-                                                                    cx,
-                                                                    |this, cx| {
-                                                                        this.delete_memo(
-                                                                            confirm_name.clone(),
-                                                                            cx,
-                                                                        );
-                                                                    },
-                                                                );
-                                                            }),
-                                                        Button::new("cancel-delete")
-                                                            .label("Cancel")
-                                                            .on_click(|_, window, cx| {
-                                                                window.close_dialog(cx);
-                                                            }),
-                                                    ]
-                                                })
-                                        });
-                                    })
-                            }),
-                    ),
+                    .when(can_manage, |panel| {
+                        panel.child(
+                            h_flex()
+                                .gap_1()
+                                .pt_3()
+                                .border_t_1()
+                                .border_color(theme::line())
+                                .child(
+                                    Button::new("edit-memo")
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::Replace)
+                                        .tooltip("Edit memo")
+                                        .on_click(move |_, window, cx| {
+                                            edit_view.update(cx, |this, cx| {
+                                                this.open_edit_memo_dialog(
+                                                    edit_memo.clone(),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                        }),
+                                )
+                                .child(
+                                    Button::new("memo-location")
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::Map)
+                                        .tooltip("Edit location")
+                                        .on_click(move |_, window, cx| {
+                                            location_view.update(cx, |this, cx| {
+                                                this.open_location_dialog(
+                                                    location_memo.clone(),
+                                                    window,
+                                                    cx,
+                                                );
+                                            });
+                                        }),
+                                )
+                                .child(
+                                    Button::new("toggle-pin")
+                                        .small()
+                                        .ghost()
+                                        .icon(if is_pinned {
+                                            IconName::StarOff
+                                        } else {
+                                            IconName::Star
+                                        })
+                                        .tooltip(if is_pinned { "Unpin" } else { "Pin" })
+                                        .on_click(move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.toggle_pin(pin_name.clone(), cx);
+                                            });
+                                        }),
+                                )
+                                .child({
+                                    let view = cx.entity().clone();
+                                    Button::new("toggle-archive")
+                                        .small()
+                                        .ghost()
+                                        .icon(IconName::FolderClosed)
+                                        .tooltip(if is_archived { "Restore" } else { "Archive" })
+                                        .on_click(move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.toggle_archive(archive_name.clone(), cx);
+                                            });
+                                        })
+                                })
+                                .child({
+                                    let view = cx.entity().clone();
+                                    Button::new("delete-memo")
+                                        .small()
+                                        .danger()
+                                        .icon(IconName::Delete)
+                                        .tooltip("Delete")
+                                        .on_click(move |_, window, cx| {
+                                            let view = view.clone();
+                                            let memo_name = delete_name.clone();
+                                            window.open_dialog(cx, move |dialog, _, _| {
+                                                let confirm_view = view.clone();
+                                                let confirm_name = memo_name.clone();
+                                                dialog
+                                                    .title("Delete memo")
+                                                    .child("This memo will be permanently deleted.")
+                                                    .footer(move |_, _, _, _| {
+                                                        let confirm_view = confirm_view.clone();
+                                                        let confirm_name = confirm_name.clone();
+                                                        vec![
+                                                            Button::new("confirm-delete")
+                                                                .danger()
+                                                                .label("Delete")
+                                                                .on_click(move |_, window, cx| {
+                                                                    window.close_dialog(cx);
+                                                                    confirm_view.update(
+                                                                        cx,
+                                                                        |this, cx| {
+                                                                            this.delete_memo(
+                                                                                confirm_name
+                                                                                    .clone(),
+                                                                                cx,
+                                                                            );
+                                                                        },
+                                                                    );
+                                                                }),
+                                                            Button::new("cancel-delete")
+                                                                .label("Cancel")
+                                                                .on_click(|_, window, cx| {
+                                                                    window.close_dialog(cx);
+                                                                }),
+                                                        ]
+                                                    })
+                                            });
+                                        })
+                                }),
+                        )
+                    }),
             )
             .into_any_element()
     }
@@ -806,6 +1224,7 @@ impl MemosDesktop {
         name: String,
     ) -> AnyElement {
         let detail_error = self.detail_error.clone();
+        let detail_loading = self.detail_loading;
         v_flex()
             .flex_1()
             .min_h_0()
@@ -829,7 +1248,18 @@ impl MemosDesktop {
                         .child(error),
                 )
             })
-            .child(self.render_detail_body(window, cx, memo, name))
+            .when(detail_loading, |panel| {
+                panel.child(
+                    v_flex()
+                        .flex_1()
+                        .items_center()
+                        .justify_center()
+                        .child(Spinner::new().large()),
+                )
+            })
+            .when(!detail_loading, |panel| {
+                panel.child(self.render_detail_body(window, cx, memo, name))
+            })
             .into_any_element()
     }
 
@@ -852,6 +1282,38 @@ impl MemosDesktop {
         })
     }
 
+    fn memo_visibility_button(
+        &self,
+        memo_name: String,
+        current: MemoVisibility,
+        visibility: MemoVisibility,
+        icon: IconName,
+        label: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let enabled = self
+            .selected_memo()
+            .is_some_and(|memo| self.can_manage_memo(memo));
+        let view = cx.entity().clone();
+        Button::new(match visibility {
+            MemoVisibility::Private => "memo-visibility-private",
+            MemoVisibility::Protected => "memo-visibility-protected",
+            MemoVisibility::Public => "memo-visibility-public",
+            MemoVisibility::VisibilityUnspecified => "memo-visibility-unspecified",
+        })
+        .xsmall()
+        .ghost()
+        .icon(icon)
+        .tooltip(label)
+        .disabled(!enabled)
+        .when(current == visibility, |button| button.primary())
+        .on_click(move |_, _, cx| {
+            view.update(cx, |this, cx| {
+                this.update_memo_visibility(memo_name.clone(), visibility, cx);
+            });
+        })
+    }
+
     fn render_detail_body(
         &self,
         window: &mut Window,
@@ -859,34 +1321,173 @@ impl MemosDesktop {
         memo: Memo,
         name: String,
     ) -> AnyElement {
+        let can_manage = self.can_manage_memo(&memo);
         match self.detail_tab {
-            DetailTab::Content => div()
-                .flex_1()
-                .min_h_0()
-                .w_full()
-                .child(
-                    TextView::markdown(
-                        gpui::SharedString::from(format!("inspector-{name}")),
-                        memo.content,
-                        window,
-                        cx,
-                    )
-                    .selectable(true)
-                    .scrollable(true)
+            DetailTab::Content => {
+                let content = memo.content;
+                let tasks = markdown_tasks(&content);
+                let link_metadata = self.link_metadata.values().cloned().collect::<Vec<_>>();
+                let task_view = cx.entity().clone();
+                let task_memo_name = name.clone();
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
                     .w_full()
-                    .h_full(),
-                )
-                .into_any_element(),
+                    .gap_3()
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(self.memo_visibility_button(
+                                name.clone(),
+                                memo.visibility,
+                                MemoVisibility::Private,
+                                IconName::EyeOff,
+                                "Private",
+                                cx,
+                            ))
+                            .child(self.memo_visibility_button(
+                                name.clone(),
+                                memo.visibility,
+                                MemoVisibility::Protected,
+                                IconName::User,
+                                "Protected",
+                                cx,
+                            ))
+                            .child(self.memo_visibility_button(
+                                name.clone(),
+                                memo.visibility,
+                                MemoVisibility::Public,
+                                IconName::Globe,
+                                "Public",
+                                cx,
+                            )),
+                    )
+                    .when(!tasks.is_empty(), |panel| {
+                        panel.child(
+                            v_flex()
+                                .gap_1()
+                                .p_2()
+                                .border_1()
+                                .border_color(theme::line())
+                                .rounded(px(3.0))
+                                .children(tasks.into_iter().map(move |task| {
+                                    let view = task_view.clone();
+                                    let memo_name = task_memo_name.clone();
+                                    Checkbox::new(("memo-task", task.line_index))
+                                        .checked(task.checked)
+                                        .disabled(!can_manage)
+                                        .label(task.label)
+                                        .on_click(move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.toggle_memo_task(
+                                                    memo_name.clone(),
+                                                    task.line_index,
+                                                    cx,
+                                                );
+                                            });
+                                        })
+                                })),
+                        )
+                    })
+                    .when(!link_metadata.is_empty(), |panel| {
+                        panel.child(
+                            v_flex().gap_2().children(
+                                link_metadata.into_iter().enumerate().filter_map(
+                                    |(ix, metadata)| {
+                                        let url = metadata.url?;
+                                        let open_url = url.clone();
+                                        Some(
+                                            h_flex()
+                                                .gap_2()
+                                                .p_2()
+                                                .border_1()
+                                                .border_color(theme::line())
+                                                .rounded(px(3.0))
+                                                .child(
+                                                    v_flex()
+                                                        .flex_1()
+                                                        .min_w_0()
+                                                        .gap_1()
+                                                        .child(
+                                                            div().text_sm().font_semibold().child(
+                                                                metadata
+                                                                    .title
+                                                                    .unwrap_or_else(|| url.clone()),
+                                                            ),
+                                                        )
+                                                        .when_some(
+                                                            metadata.description,
+                                                            |content, description| {
+                                                                content.child(
+                                                                    div()
+                                                                        .text_xs()
+                                                                        .text_color(
+                                                                            theme::graphite(),
+                                                                        )
+                                                                        .child(description),
+                                                                )
+                                                            },
+                                                        ),
+                                                )
+                                                .child(
+                                                    Button::new(("open-link-preview", ix))
+                                                        .ghost()
+                                                        .icon(IconName::ExternalLink)
+                                                        .tooltip("Open link")
+                                                        .on_click(move |_, _, cx| {
+                                                            cx.open_url(&open_url)
+                                                        }),
+                                                ),
+                                        )
+                                    },
+                                ),
+                            ),
+                        )
+                    })
+                    .child(
+                        div().flex_1().min_h_0().w_full().child(
+                            TextView::markdown(
+                                gpui::SharedString::from(format!("inspector-{name}")),
+                                content,
+                                window,
+                                cx,
+                            )
+                            .selectable(true)
+                            .scrollable(true)
+                            .w_full()
+                            .h_full(),
+                        ),
+                    )
+                    .into_any_element()
+            }
             DetailTab::Activity => self.render_activity_panel(cx),
-            DetailTab::Links => self.render_links_panel(),
-            DetailTab::Share => self.render_share_panel(cx),
-            DetailTab::Files => self.render_files_panel(window, cx),
+            DetailTab::Links => self.render_links_panel(window, cx, can_manage),
+            DetailTab::Share => self.render_share_panel(cx, can_manage),
+            DetailTab::Files => self.render_files_panel(window, cx, can_manage),
         }
     }
 
     fn render_activity_panel(&self, cx: &mut Context<Self>) -> AnyElement {
         let reactions = reaction_counts(&self.detail.reactions);
+        let current_user_name = self
+            .current_user
+            .as_ref()
+            .and_then(|user| user.name.clone());
+        let can_interact = current_user_name.is_some();
+        let is_admin = self
+            .current_user
+            .as_ref()
+            .is_some_and(|user| user.role == UserRole::Admin);
+        let own_reactions = self
+            .detail
+            .reactions
+            .iter()
+            .filter(|reaction| reaction.creator == current_user_name)
+            .cloned()
+            .collect::<Vec<_>>();
         let comments = self.detail.comments.clone();
+        let comments_empty = comments.is_empty();
+        let comment_view = cx.entity().clone();
         let view = cx.entity().clone();
         v_flex()
             .flex_1()
@@ -907,10 +1508,32 @@ impl MemosDesktop {
                             .text_xs()
                             .child(format!("{reaction} {count}"))
                     }))
+                    .children(
+                        own_reactions
+                            .into_iter()
+                            .enumerate()
+                            .filter_map(|(ix, reaction)| {
+                                let reaction_name = reaction.name?;
+                                let view = cx.entity().clone();
+                                Some(
+                                    Button::new(("remove-reaction", ix))
+                                        .xsmall()
+                                        .ghost()
+                                        .icon(IconName::Close)
+                                        .tooltip("Remove my reaction")
+                                        .on_click(move |_, _, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.remove_reaction(reaction_name.clone(), cx);
+                                            });
+                                        }),
+                                )
+                            }),
+                    )
                     .child(
                         Button::new("add-reaction")
                             .xsmall()
                             .ghost()
+                            .disabled(!can_interact)
                             .label("👍")
                             .tooltip("React")
                             .on_click(move |_, _, cx| {
@@ -926,7 +1549,7 @@ impl MemosDesktop {
                     .min_h_0()
                     .overflow_y_scrollbar()
                     .gap_3()
-                    .when(comments.is_empty(), |list| {
+                    .when(comments_empty, |list| {
                         list.child(
                             div()
                                 .text_xs()
@@ -934,23 +1557,48 @@ impl MemosDesktop {
                                 .child("No comments yet."),
                         )
                     })
-                    .children(comments.into_iter().map(|comment| {
+                    .children(comments.into_iter().enumerate().map(move |(ix, comment)| {
+                        let can_delete = is_admin || comment.creator == current_user_name;
+                        let comment_name = comment.name.clone().unwrap_or_default();
+                        let view = comment_view.clone();
                         v_flex()
                             .gap_1()
                             .pb_3()
                             .border_b_1()
                             .border_color(theme::line())
                             .child(
-                                div()
-                                    .font_family(theme::mono_family())
-                                    .text_xs()
-                                    .text_color(theme::graphite())
+                                h_flex()
+                                    .items_center()
+                                    .justify_between()
                                     .child(
-                                        comment
-                                            .create_time
-                                            .map(relative_time)
-                                            .unwrap_or_else(|| "now".into()),
-                                    ),
+                                        div()
+                                            .font_family(theme::mono_family())
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .child(
+                                                comment
+                                                    .create_time
+                                                    .map(relative_time)
+                                                    .unwrap_or_else(|| "now".into()),
+                                            ),
+                                    )
+                                    .when(can_delete, |row| {
+                                        row.child(
+                                            Button::new(("delete-comment", ix))
+                                                .xsmall()
+                                                .danger()
+                                                .icon(IconName::Delete)
+                                                .tooltip("Delete comment")
+                                                .on_click(move |_, _, cx| {
+                                                    view.update(cx, |this, cx| {
+                                                        this.delete_comment(
+                                                            comment_name.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                    }),
                             )
                             .child(
                                 div()
@@ -960,68 +1608,191 @@ impl MemosDesktop {
                             )
                     })),
             )
-            .child(
-                h_flex()
-                    .items_center()
-                    .gap_2()
-                    .child(Input::new(&self.comment_input))
-                    .child(
-                        Button::new("send-comment")
-                            .small()
+            .when(can_interact, |panel| {
+                panel.child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(Input::new(&self.comment_input))
+                        .child(
+                            Button::new("send-comment")
+                                .small()
+                                .primary()
+                                .icon(IconName::ArrowUp)
+                                .tooltip("Send comment")
+                                .on_click(cx.listener(|this, _, window, cx| {
+                                    this.save_comment(window, cx);
+                                })),
+                        ),
+                )
+            })
+            .into_any_element()
+    }
+
+    fn open_add_relation_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let input = cx.new(|cx| InputState::new(window, cx).placeholder("Memo ID or memos/{id}"));
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let input = input.clone();
+            let view = view.clone();
+            dialog
+                .title("Add memo reference")
+                .child(Input::new(&input))
+                .footer(move |_, _, _, _| {
+                    let input = input.clone();
+                    let view = view.clone();
+                    vec![
+                        Button::new("confirm-add-relation")
                             .primary()
-                            .icon(IconName::ArrowUp)
-                            .tooltip("Send comment")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.save_comment(window, cx);
-                            })),
+                            .label("Add")
+                            .on_click(move |_, window, cx| {
+                                let related = input.read(cx).value().trim().to_string();
+                                if related.is_empty() {
+                                    return;
+                                }
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.add_relation(related.clone(), cx);
+                                });
+                            }),
+                        Button::new("cancel-add-relation")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn render_links_panel(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+        can_manage: bool,
+    ) -> AnyElement {
+        let relations = self.detail.relations.clone();
+        let relations_empty = relations.is_empty();
+        let add_view = cx.entity().clone();
+        let relation_view = cx.entity().clone();
+        v_flex()
+            .flex_1()
+            .min_h_0()
+            .gap_2()
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("add-relation")
+                        .small()
+                        .primary()
+                        .disabled(!can_manage)
+                        .icon(IconName::Plus)
+                        .tooltip("Add reference")
+                        .on_click(move |_, window, cx| {
+                            add_view.update(cx, |this, cx| {
+                                this.open_add_relation_dialog(window, cx);
+                            });
+                        }),
+                ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scrollbar()
+                    .gap_2()
+                    .when(relations_empty, |list| {
+                        list.child(
+                            div()
+                                .text_xs()
+                                .text_color(theme::graphite())
+                                .child("No references or backlinks."),
+                        )
+                    })
+                    .children(
+                        relations
+                            .into_iter()
+                            .enumerate()
+                            .map(move |(ix, relation)| {
+                                let relation_type = format!("{:?}", relation.type_).to_lowercase();
+                                let view = relation_view.clone();
+                                let related_name = relation.related_memo.name.clone();
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .p_2()
+                                    .border_1()
+                                    .border_color(theme::line())
+                                    .rounded(px(3.0))
+                                    .child(
+                                        v_flex()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .font_family(theme::mono_family())
+                                                    .text_xs()
+                                                    .text_color(theme::cobalt_dark())
+                                                    .child(relation_type),
+                                            )
+                                            .child(
+                                                div().text_xs().child(
+                                                    relation
+                                                        .related_memo
+                                                        .snippet
+                                                        .unwrap_or(related_name),
+                                                ),
+                                            ),
+                                    )
+                                    .child(
+                                        Button::new(("remove-relation", ix))
+                                            .xsmall()
+                                            .danger()
+                                            .disabled(!can_manage)
+                                            .icon(IconName::Delete)
+                                            .tooltip("Remove relation")
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.remove_relation(ix, cx);
+                                                });
+                                            }),
+                                    )
+                            }),
                     ),
             )
             .into_any_element()
     }
 
-    fn render_links_panel(&self) -> AnyElement {
-        let relations = self.detail.relations.clone();
-        v_flex()
-            .flex_1()
-            .min_h_0()
-            .overflow_y_scrollbar()
-            .gap_2()
-            .when(relations.is_empty(), |list| {
-                list.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme::graphite())
-                        .child("No references or backlinks."),
-                )
-            })
-            .children(relations.into_iter().map(|relation| {
-                let relation_type = format!("{:?}", relation.type_).to_lowercase();
-                v_flex()
-                    .gap_1()
-                    .p_2()
-                    .border_1()
-                    .border_color(theme::line())
-                    .rounded(px(3.0))
-                    .child(
-                        div()
-                            .font_family(theme::mono_family())
-                            .text_xs()
-                            .text_color(theme::cobalt_dark())
-                            .child(relation_type),
-                    )
-                    .child(
-                        div().text_xs().child(
-                            relation
-                                .related_memo
-                                .snippet
-                                .unwrap_or(relation.related_memo.name),
-                        ),
-                    )
-            }))
-            .into_any_element()
+    fn open_create_share_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let view = view.clone();
+            dialog
+                .title("Create share link")
+                .child("Choose when this read-only link should expire.")
+                .footer(move |_, _, _, _| {
+                    [
+                        ("share-never", "Never", None),
+                        ("share-seven-days", "7 days", Some(24 * 7)),
+                        ("share-thirty-days", "30 days", Some(24 * 30)),
+                    ]
+                    .into_iter()
+                    .map(|(id, label, ttl)| {
+                        let view = view.clone();
+                        Button::new(id)
+                            .when(ttl.is_none(), |button| button.primary())
+                            .label(label)
+                            .on_click(move |_, window, cx| {
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.create_share_with_ttl(ttl, cx);
+                                });
+                            })
+                    })
+                    .collect()
+                })
+        });
     }
 
-    fn render_share_panel(&self, cx: &mut Context<Self>) -> AnyElement {
+    fn render_share_panel(&self, cx: &mut Context<Self>, can_manage: bool) -> AnyElement {
         let shares = self.detail.shares.clone();
         let view = cx.entity().clone();
         v_flex()
@@ -1042,10 +1813,13 @@ impl MemosDesktop {
                         Button::new("create-share")
                             .small()
                             .primary()
+                            .disabled(!can_manage)
                             .icon(IconName::Plus)
                             .tooltip("Create share link")
-                            .on_click(move |_, _, cx| {
-                                view.update(cx, |this, cx| this.create_share(cx));
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |this, cx| {
+                                    this.open_create_share_dialog(window, cx);
+                                });
                             }),
                     ),
             )
@@ -1107,6 +1881,7 @@ impl MemosDesktop {
                                 Button::new("delete-share")
                                     .xsmall()
                                     .danger()
+                                    .disabled(!can_manage)
                                     .icon(IconName::Delete)
                                     .tooltip("Revoke link")
                                     .on_click(move |_, _, cx| {
@@ -1120,9 +1895,89 @@ impl MemosDesktop {
             .into_any_element()
     }
 
-    fn render_files_panel(&self, _window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let attachments = self.detail.attachments.clone();
+    fn open_external_attachment_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let filename = cx.new(|cx| InputState::new(window, cx).placeholder("Display filename"));
+        let url = cx.new(|cx| InputState::new(window, cx).placeholder("https://example.com/file"));
+        let mime = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("MIME type")
+                .default_value("application/octet-stream")
+        });
         let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let filename = filename.clone();
+            let url = url.clone();
+            let mime = mime.clone();
+            let view = view.clone();
+            dialog
+                .title("Attach external link")
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&filename))
+                        .child(Input::new(&url))
+                        .child(Input::new(&mime)),
+                )
+                .footer(move |_, _, _, _| {
+                    let filename = filename.clone();
+                    let url = url.clone();
+                    let mime = mime.clone();
+                    let view = view.clone();
+                    vec![
+                        Button::new("confirm-external-attachment")
+                            .primary()
+                            .label("Attach")
+                            .on_click(move |_, window, cx| {
+                                let filename = filename.read(cx).value().trim().to_string();
+                                let url = url.read(cx).value().trim().to_string();
+                                let mime = mime.read(cx).value().trim().to_string();
+                                let valid_url = url::Url::parse(&url).is_ok_and(|url| {
+                                    matches!(url.scheme(), "http" | "https") && url.host().is_some()
+                                });
+                                if filename.is_empty()
+                                    || !valid_url
+                                    || mime.is_empty()
+                                    || mime.contains(char::is_whitespace)
+                                {
+                                    window.close_dialog(cx);
+                                    view.update(cx, |this, cx| {
+                                        this.detail_error = Some(
+                                            "Enter a filename, an HTTP(S) URL, and a valid MIME type."
+                                                .into(),
+                                        );
+                                        cx.notify();
+                                    });
+                                    return;
+                                }
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.attach_external_link(
+                                        filename.clone(),
+                                        url.clone(),
+                                        mime.clone(),
+                                        cx,
+                                    );
+                                });
+                            }),
+                        Button::new("cancel-external-attachment")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn render_files_panel(
+        &self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+        can_manage: bool,
+    ) -> AnyElement {
+        let attachments = self.detail.attachments.clone();
+        let attachments_empty = attachments.is_empty();
+        let upload_view = cx.entity().clone();
+        let external_view = cx.entity().clone();
+        let attachment_view = cx.entity().clone();
         v_flex()
             .flex_1()
             .min_h_0()
@@ -1138,17 +1993,34 @@ impl MemosDesktop {
                             .child("Files attached to this memo"),
                     )
                     .child(
-                        Button::new("upload-attachment")
-                            .small()
-                            .primary()
-                            .icon(IconName::Plus)
-                            .tooltip("Upload attachment")
-                            .disabled(self.current_user.is_none())
-                            .on_click(move |_, window, cx| {
-                                view.update(cx, |this, cx| {
-                                    this.upload_attachment(window, cx);
-                                });
-                            }),
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new("attach-external")
+                                    .small()
+                                    .ghost()
+                                    .icon(IconName::ExternalLink)
+                                    .tooltip("Attach external link")
+                                    .disabled(!can_manage)
+                                    .on_click(move |_, window, cx| {
+                                        external_view.update(cx, |this, cx| {
+                                            this.open_external_attachment_dialog(window, cx);
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new("upload-attachment")
+                                    .small()
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .tooltip("Upload attachments")
+                                    .disabled(!can_manage)
+                                    .on_click(move |_, window, cx| {
+                                        upload_view.update(cx, |this, cx| {
+                                            this.upload_attachment(window, cx);
+                                        });
+                                    }),
+                            ),
                     ),
             )
             .child(
@@ -1157,7 +2029,7 @@ impl MemosDesktop {
                     .min_h_0()
                     .overflow_y_scrollbar()
                     .gap_2()
-                    .when(attachments.is_empty(), |list| {
+                    .when(attachments_empty, |list| {
                         list.child(
                             div()
                                 .text_xs()
@@ -1165,135 +2037,387 @@ impl MemosDesktop {
                                 .child("No attachments on this memo."),
                         )
                     })
-                    .children(attachments.into_iter().map(|attachment| {
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .p_2()
-                            .border_1()
-                            .border_color(theme::line())
-                            .rounded(px(3.0))
-                            .child(Icon::new(IconName::File).size_4())
-                            .child(
-                                v_flex()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .gap_1()
+                    .children(
+                        attachments
+                            .into_iter()
+                            .enumerate()
+                            .map(move |(ix, attachment)| {
+                                let open_view = attachment_view.clone();
+                                let edit_view = attachment_view.clone();
+                                let delete_view = attachment_view.clone();
+                                let open_attachment = attachment.clone();
+                                let edit_attachment = attachment.clone();
+                                let name = attachment.name.clone().unwrap_or_default();
+                                let metadata = attachment_metadata(&attachment);
+                                let preview = self.attachment_previews.get(&name).cloned();
+                                let has_preview = preview.is_some();
+                                let can_open = external_attachment_url(&attachment).is_some()
+                                    || attachment.name.is_some();
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .p_2()
+                                    .border_1()
+                                    .border_color(theme::line())
+                                    .rounded(px(3.0))
+                                    .when_some(preview, |row, path| {
+                                        row.child(
+                                            div()
+                                                .size(px(40.0))
+                                                .flex_shrink_0()
+                                                .overflow_hidden()
+                                                .rounded(px(3.0))
+                                                .child(
+                                                    img(path)
+                                                        .size_full()
+                                                        .object_fit(ObjectFit::Cover),
+                                                ),
+                                        )
+                                    })
+                                    .when(!has_preview, |row| {
+                                        row.child(Icon::new(IconName::File).size_4())
+                                    })
                                     .child(
-                                        div()
-                                            .text_xs()
-                                            .overflow_hidden()
-                                            .text_ellipsis()
-                                            .child(attachment.filename),
+                                        v_flex()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .child(attachment.filename),
+                                            )
+                                            .child(
+                                                div()
+                                                    .font_family(theme::mono_family())
+                                                    .text_xs()
+                                                    .text_color(theme::graphite())
+                                                    .child(metadata),
+                                            ),
+                                    )
+                                    .when(can_open, |row| {
+                                        row.child(
+                                            Button::new(("open-attachment", ix))
+                                                .xsmall()
+                                                .ghost()
+                                                .icon(IconName::ExternalLink)
+                                                .tooltip("Open attachment")
+                                                .on_click(move |_, _, cx| {
+                                                    open_view.update(cx, |this, cx| {
+                                                        this.open_attachment_resource(
+                                                            open_attachment.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                    })
+                                    .child(
+                                        Button::new(("edit-attachment", ix))
+                                            .xsmall()
+                                            .ghost()
+                                            .disabled(!can_manage)
+                                            .icon(IconName::Replace)
+                                            .tooltip("Edit attachment JSON")
+                                            .on_click(move |_, window, cx| {
+                                                edit_view.update(cx, |this, cx| {
+                                                    this.open_json_editor(
+                                                        "Edit attachment",
+                                                        edit_attachment.clone(),
+                                                        window,
+                                                        cx,
+                                                        |this, attachment, cx| {
+                                                            this.save_attachment_resource(
+                                                                attachment, cx,
+                                                            );
+                                                        },
+                                                    );
+                                                });
+                                            }),
                                     )
                                     .child(
-                                        div()
-                                            .font_family(theme::mono_family())
-                                            .text_xs()
-                                            .text_color(theme::graphite())
-                                            .child(attachment.type_),
-                                    ),
-                            )
-                    })),
+                                        Button::new(("delete-attachment", ix))
+                                            .xsmall()
+                                            .danger()
+                                            .disabled(!can_manage)
+                                            .icon(IconName::Delete)
+                                            .tooltip("Delete attachment")
+                                            .on_click(move |_, _, cx| {
+                                                delete_view.update(cx, |this, cx| {
+                                                    this.delete_attachment_resource(
+                                                        name.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            }),
+                                    )
+                            }),
+                    ),
             )
             .into_any_element()
     }
 
-    fn render_views_page(&self, cx: &mut Context<Self>) -> AnyElement {
-        let view = cx.entity().clone();
-        let server_views = self.memo_views.clone();
-        let server_view_rows = server_views.into_iter().map(|memo_view| {
-            h_flex()
-                .min_h(px(56.0))
-                .px_4()
-                .items_center()
-                .justify_between()
-                .border_b_1()
-                .border_color(theme::line())
-                .child(
-                    v_flex()
-                        .gap_1()
-                        .child(div().text_sm().font_semibold().child(memo_view.title))
-                        .child(
-                            div()
-                                .font_family(theme::mono_family())
-                                .text_xs()
-                                .text_color(theme::graphite())
-                                .child(memo_view.filter),
-                        ),
-                )
-                .child(
-                    div()
-                        .font_family(theme::mono_family())
-                        .text_xs()
-                        .text_color(theme::cobalt_dark())
-                        .child("SERVER"),
+    fn open_memo_view_dialog(
+        &self,
+        existing: Option<Shortcut>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let name = existing.as_ref().and_then(|view| view.name.clone());
+        let title = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("View title")
+                .default_value(
+                    existing
+                        .as_ref()
+                        .map(|view| view.title.clone())
+                        .unwrap_or_default(),
                 )
         });
+        let filter = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .rows(6)
+                .placeholder("CEL filter expression")
+                .default_value(
+                    existing
+                        .as_ref()
+                        .and_then(|view| view.filter.clone())
+                        .unwrap_or_default(),
+                )
+        });
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let title = title.clone();
+            let filter = filter.clone();
+            let view = view.clone();
+            let name = name.clone();
+            dialog
+                .title(if name.is_some() {
+                    "Edit view"
+                } else {
+                    "Create view"
+                })
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&title))
+                        .child(Input::new(&filter).h(px(140.0))),
+                )
+                .footer(move |_, _, _, _| {
+                    let title = title.clone();
+                    let filter = filter.clone();
+                    let view = view.clone();
+                    let name = name.clone();
+                    vec![
+                        Button::new("save-memo-view")
+                            .primary()
+                            .label("Save")
+                            .on_click(move |_, window, cx| {
+                                let title = title.read(cx).value().trim().to_string();
+                                let filter = filter.read(cx).value().trim().to_string();
+                                if title.is_empty() || filter.is_empty() {
+                                    return;
+                                }
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.save_memo_view(
+                                        Shortcut {
+                                            filter: Some(filter.clone()),
+                                            name: name.clone(),
+                                            title: title.clone(),
+                                        },
+                                        cx,
+                                    );
+                                });
+                            }),
+                        Button::new("cancel-memo-view")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn render_views_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let quick_view_entity = cx.entity().clone();
+        let create_view_entity = cx.entity().clone();
+        let server_view_entity = cx.entity().clone();
+        let server_views = self.memo_views.clone();
+        let server_views_empty = server_views.is_empty();
+        let server_view_rows = server_views
+            .into_iter()
+            .enumerate()
+            .map(move |(ix, memo_view)| {
+                let open_entity = server_view_entity.clone();
+                let edit_entity = server_view_entity.clone();
+                let delete_entity = server_view_entity.clone();
+                let filter = memo_view.filter.clone().unwrap_or_default();
+                let edit_view = memo_view.clone();
+                let name = memo_view.name.clone().unwrap_or_default();
+                h_flex()
+                    .min_h(px(64.0))
+                    .px_4()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::line())
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .min_w_0()
+                            .gap_1()
+                            .child(div().text_sm().font_semibold().child(memo_view.title))
+                            .child(
+                                div()
+                                    .font_family(theme::mono_family())
+                                    .text_xs()
+                                    .text_color(theme::graphite())
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(filter.clone()),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_1()
+                            .child(
+                                Button::new(("edit-server-view", ix))
+                                    .ghost()
+                                    .icon(IconName::Replace)
+                                    .tooltip("Edit view")
+                                    .on_click(move |_, window, cx| {
+                                        edit_entity.update(cx, |this, cx| {
+                                            this.open_memo_view_dialog(
+                                                Some(edit_view.clone()),
+                                                window,
+                                                cx,
+                                            );
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new(("delete-server-view", ix))
+                                    .danger()
+                                    .icon(IconName::Delete)
+                                    .tooltip("Delete view")
+                                    .on_click(move |_, _, cx| {
+                                        delete_entity.update(cx, |this, cx| {
+                                            this.delete_memo_view_resource(name.clone(), cx);
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new(("open-server-view", ix))
+                                    .primary()
+                                    .icon(IconName::ArrowRight)
+                                    .tooltip("Open view")
+                                    .on_click(move |_, _, cx| {
+                                        open_entity.update(cx, |this, cx| {
+                                            this.open_memo_view(filter.clone(), cx);
+                                        });
+                                    }),
+                            ),
+                    )
+            });
         module_page(
             "Saved views",
             "Reusable filters",
             v_flex()
-                .gap_0()
-                .border_1()
-                .border_color(theme::line())
-                .when(!self.memo_views.is_empty(), |panel| {
-                    panel
+                .gap_4()
+                .child(
+                    h_flex().justify_end().child(
+                        Button::new("create-memo-view")
+                            .primary()
+                            .icon(IconName::Plus)
+                            .label("New view")
+                            .disabled(self.current_user.is_none())
+                            .on_click(move |_, window, cx| {
+                                create_view_entity.update(cx, |this, cx| {
+                                    this.open_memo_view_dialog(None, window, cx);
+                                });
+                            }),
+                    ),
+                )
+                .child(
+                    v_flex()
+                        .border_1()
+                        .border_color(theme::line())
                         .child(panel_label("SERVER VIEWS"))
-                        .children(server_view_rows)
-                        .child(div().h(px(12.0)))
-                })
-                .child(panel_label("QUICK VIEWS"))
-                .children(
-                    [
-                        ("Pinned", "pinned == true", QuickFilter::Pinned),
-                        (
-                            "Open tasks",
-                            "has_incomplete_tasks == true",
-                            QuickFilter::Tasks,
+                        .when(server_views_empty, |panel| {
+                            panel.child(
+                                div()
+                                    .p_4()
+                                    .text_xs()
+                                    .text_color(theme::graphite())
+                                    .child("No saved server views."),
+                            )
+                        })
+                        .children(server_view_rows),
+                )
+                .child(
+                    v_flex()
+                        .border_1()
+                        .border_color(theme::line())
+                        .child(panel_label("QUICK VIEWS"))
+                        .children(
+                            [
+                                ("Pinned", "pinned == true", QuickFilter::Pinned),
+                                (
+                                    "Open tasks",
+                                    "has_incomplete_tasks == true",
+                                    QuickFilter::Tasks,
+                                ),
+                                ("Code notes", "has_code == true", QuickFilter::Code),
+                            ]
+                            .into_iter()
+                            .map(
+                                move |(title, filter, quick_filter)| {
+                                    let view = quick_view_entity.clone();
+                                    h_flex()
+                                        .min_h(px(56.0))
+                                        .px_4()
+                                        .items_center()
+                                        .justify_between()
+                                        .border_b_1()
+                                        .border_color(theme::line())
+                                        .child(
+                                            v_flex()
+                                                .gap_1()
+                                                .child(div().text_sm().font_semibold().child(title))
+                                                .child(
+                                                    div()
+                                                        .font_family(theme::mono_family())
+                                                        .text_xs()
+                                                        .text_color(theme::graphite())
+                                                        .child(filter),
+                                                ),
+                                        )
+                                        .child(
+                                            Button::new(gpui::SharedString::from(format!(
+                                                "open-view-{title}"
+                                            )))
+                                            .ghost()
+                                            .icon(IconName::ArrowRight)
+                                            .tooltip("Open view")
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.route = Route::Timeline;
+                                                    this.set_quick_filter(quick_filter, cx);
+                                                });
+                                            }),
+                                        )
+                                },
+                            ),
                         ),
-                        ("Code notes", "has_code == true", QuickFilter::Code),
-                    ]
-                    .into_iter()
-                    .map(move |(title, filter, quick_filter)| {
-                        let view = view.clone();
-                        h_flex()
-                            .min_h(px(56.0))
-                            .px_4()
-                            .items_center()
-                            .justify_between()
-                            .border_b_1()
-                            .border_color(theme::line())
-                            .child(
-                                v_flex()
-                                    .gap_1()
-                                    .child(div().text_sm().font_semibold().child(title))
-                                    .child(
-                                        div()
-                                            .font_family(theme::mono_family())
-                                            .text_xs()
-                                            .text_color(theme::graphite())
-                                            .child(filter),
-                                    ),
-                            )
-                            .child(
-                                Button::new(gpui::SharedString::from(format!("open-view-{title}")))
-                                    .ghost()
-                                    .icon(IconName::ArrowRight)
-                                    .tooltip("Open view")
-                                    .on_click(move |_, _, cx| {
-                                        view.update(cx, |this, cx| {
-                                            this.route = Route::Timeline;
-                                            this.set_quick_filter(quick_filter, cx);
-                                        });
-                                    }),
-                            )
-                    }),
                 ),
         )
     }
 
-    fn render_attachments_page(&self, _cx: &mut Context<Self>) -> AnyElement {
+    fn render_attachments_page(&self, cx: &mut Context<Self>) -> AnyElement {
         let attachments = if self.library_attachments.is_empty() {
             self.memos
                 .iter()
@@ -1302,67 +2426,248 @@ impl MemosDesktop {
         } else {
             self.library_attachments.clone()
         };
-        let content = v_flex()
-            .border_1()
-            .border_color(theme::line())
-            .when(attachments.is_empty(), |list| {
-                list.child(empty_state(
-                    IconName::File,
-                    "No attachments",
-                    "Uploaded files will appear here.",
-                ))
-            })
-            .children(attachments.into_iter().map(|attachment| {
-                h_flex()
-                    .min_h(px(52.0))
-                    .px_4()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(theme::line())
-                    .child(
-                        h_flex()
-                            .gap_3()
-                            .items_center()
-                            .child(Icon::new(IconName::File).size_4())
-                            .child(attachment.filename),
+        let attachments_empty = attachments.is_empty();
+        let has_more = self.next_attachment_page_token.is_some();
+        let loading_more = self.loading_more;
+        let upload_view = cx.entity().clone();
+        let load_view = cx.entity().clone();
+        let attachment_view = cx.entity().clone();
+        let content =
+            v_flex()
+                .gap_3()
+                .child(
+                    h_flex().justify_end().child(
+                        Button::new("upload-library-attachments")
+                            .primary()
+                            .icon(IconName::Plus)
+                            .label("Upload files")
+                            .disabled(self.current_user.is_none())
+                            .on_click(move |_, window, cx| {
+                                upload_view.update(cx, |this, cx| {
+                                    this.upload_library_attachments(window, cx);
+                                });
+                            }),
+                    ),
+                )
+                .child(
+                    v_flex()
+                        .border_1()
+                        .border_color(theme::line())
+                        .when(attachments_empty, |list| {
+                            list.child(empty_state(
+                                IconName::File,
+                                "No attachments",
+                                "Uploaded files will appear here.",
+                            ))
+                        })
+                        .children(attachments.into_iter().enumerate().map(
+                            move |(ix, attachment)| {
+                                let open_view = attachment_view.clone();
+                                let edit_view = attachment_view.clone();
+                                let delete_view = attachment_view.clone();
+                                let open_attachment = attachment.clone();
+                                let edit_attachment = attachment.clone();
+                                let name = attachment.name.clone().unwrap_or_default();
+                                let metadata = attachment_metadata(&attachment);
+                                let preview = self.attachment_previews.get(&name).cloned();
+                                let has_preview = preview.is_some();
+                                let can_open = external_attachment_url(&attachment).is_some()
+                                    || attachment.name.is_some();
+                                h_flex()
+                                    .min_h(px(58.0))
+                                    .px_4()
+                                    .items_center()
+                                    .justify_between()
+                                    .border_b_1()
+                                    .border_color(theme::line())
+                                    .child(
+                                        h_flex()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .gap_3()
+                                            .items_center()
+                                            .when_some(preview, |row, path| {
+                                                row.child(
+                                                    div()
+                                                        .size(px(44.0))
+                                                        .flex_shrink_0()
+                                                        .overflow_hidden()
+                                                        .rounded(px(3.0))
+                                                        .child(
+                                                            img(path)
+                                                                .size_full()
+                                                                .object_fit(ObjectFit::Cover),
+                                                        ),
+                                                )
+                                            })
+                                            .when(!has_preview, |row| {
+                                                row.child(Icon::new(IconName::File).size_4())
+                                            })
+                                            .child(
+                                                v_flex()
+                                                    .min_w_0()
+                                                    .gap_1()
+                                                    .child(
+                                                        div()
+                                                            .text_sm()
+                                                            .overflow_hidden()
+                                                            .text_ellipsis()
+                                                            .child(attachment.filename),
+                                                    )
+                                                    .child(
+                                                        div()
+                                                            .font_family(theme::mono_family())
+                                                            .text_xs()
+                                                            .text_color(theme::graphite())
+                                                            .child(metadata),
+                                                    ),
+                                            ),
+                                    )
+                                    .child(
+                                        h_flex()
+                                            .gap_1()
+                                            .when(can_open, |actions| {
+                                                actions.child(
+                                                    Button::new(("open-library-attachment", ix))
+                                                        .ghost()
+                                                        .icon(IconName::ExternalLink)
+                                                        .tooltip("Open attachment")
+                                                        .on_click(move |_, _, cx| {
+                                                            open_view.update(cx, |this, cx| {
+                                                                this.open_attachment_resource(
+                                                                    open_attachment.clone(),
+                                                                    cx,
+                                                                );
+                                                            });
+                                                        }),
+                                                )
+                                            })
+                                            .child(
+                                                Button::new(("edit-library-attachment", ix))
+                                                    .ghost()
+                                                    .icon(IconName::Replace)
+                                                    .tooltip("Edit attachment JSON")
+                                                    .on_click(move |_, window, cx| {
+                                                        edit_view.update(cx, |this, cx| {
+                                                            this.open_json_editor(
+                                                                "Edit attachment",
+                                                                edit_attachment.clone(),
+                                                                window,
+                                                                cx,
+                                                                |this, attachment, cx| {
+                                                                    this.save_attachment_resource(
+                                                                        attachment, cx,
+                                                                    );
+                                                                },
+                                                            );
+                                                        });
+                                                    }),
+                                            )
+                                            .child(
+                                                Button::new(("delete-library-attachment", ix))
+                                                    .danger()
+                                                    .icon(IconName::Delete)
+                                                    .tooltip("Delete attachment")
+                                                    .on_click(move |_, _, cx| {
+                                                        delete_view.update(cx, |this, cx| {
+                                                            this.delete_attachment_resource(
+                                                                name.clone(),
+                                                                cx,
+                                                            );
+                                                        });
+                                                    }),
+                                            ),
+                                    )
+                            },
+                        )),
+                )
+                .when(has_more, |content| {
+                    content.child(
+                        h_flex().justify_center().child(
+                            Button::new("load-more-attachments")
+                                .outline()
+                                .label("Load more")
+                                .loading(loading_more)
+                                .on_click(move |_, _, cx| {
+                                    load_view.update(cx, |this, cx| {
+                                        this.load_more_attachments(cx);
+                                    });
+                                }),
+                        ),
                     )
-                    .child(
-                        div()
-                            .font_family(theme::mono_family())
-                            .text_xs()
-                            .text_color(theme::graphite())
-                            .child(attachment.type_),
-                    )
-            }));
+                });
         module_page("Attachments", "Instance file library", content)
     }
 
-    fn render_inbox_page(&self, _cx: &mut Context<Self>) -> AnyElement {
+    fn render_inbox_page(&self, cx: &mut Context<Self>) -> AnyElement {
         let notifications = self.notifications.clone();
+        let notifications_empty = notifications.is_empty();
+        let has_more = self.next_notification_page_token.is_some();
+        let loading_more = self.loading_more;
+        let notification_view = cx.entity().clone();
+        let load_view = cx.entity().clone();
         let content = v_flex()
             .border_1()
             .border_color(theme::line())
-            .when(notifications.is_empty(), |list| {
+            .when(notifications_empty, |list| {
                 list.child(empty_state(
                     IconName::Bell,
                     "Inbox is clear",
                     "New mentions and comments will appear here.",
                 ))
             })
-            .children(notifications.into_iter().map(|notification| {
-                let kind = notification
-                    .type_
-                    .map(|kind| format!("{kind:?}"))
-                    .unwrap_or_else(|| "Notification".into());
-                let sender = notification
-                    .sender
-                    .unwrap_or_else(|| "Unknown sender".into());
-                let name = notification
-                    .name
-                    .unwrap_or_else(|| "notifications/unknown".into());
-                h_flex()
-                    .min_h(px(64.0))
+            .children(
+                notifications
+                    .into_iter()
+                    .enumerate()
+                    .map(move |(ix, notification)| {
+                        let kind = notification
+                            .type_
+                            .map(|kind| format!("{kind:?}"))
+                            .unwrap_or_else(|| "Notification".into());
+                        let sender = notification
+                            .sender
+                            .unwrap_or_else(|| "Unknown sender".into());
+                        let name = notification
+                            .name
+                            .unwrap_or_else(|| "notifications/unknown".into());
+                        let snippet = notification
+                            .memo_comment
+                            .as_ref()
+                            .and_then(|payload| payload.memo_snippet.clone())
+                            .or_else(|| {
+                                notification
+                                    .memo_mention
+                                    .as_ref()
+                                    .and_then(|payload| payload.memo_snippet.clone())
+                            })
+                            .unwrap_or_else(|| "No preview available".into());
+                        let target_memo = notification
+                            .memo_comment
+                            .as_ref()
+                            .and_then(|payload| {
+                                payload
+                                    .related_memo
+                                    .clone()
+                                    .or_else(|| payload.memo.clone())
+                            })
+                            .or_else(|| {
+                                notification.memo_mention.as_ref().and_then(|payload| {
+                                    payload
+                                        .related_memo
+                                        .clone()
+                                        .or_else(|| payload.memo.clone())
+                                })
+                            });
+                        let archived = notification.status
+                            == Some(memos_api::types::UserNotificationStatus::Archived);
+                        let open_view = notification_view.clone();
+                        let status_view = notification_view.clone();
+                        let delete_view = notification_view.clone();
+                        let status_name = name.clone();
+                        let delete_name = name.clone();
+                        h_flex()
+                    .min_h(px(72.0))
                     .px_4()
                     .items_center()
                     .justify_between()
@@ -1375,6 +2680,8 @@ impl MemosDesktop {
                             .child(Icon::new(IconName::Bell).size_4())
                             .child(
                                 v_flex()
+                                    .flex_1()
+                                    .min_w_0()
                                     .gap_1()
                                     .child(div().text_sm().font_semibold().child(kind))
                                     .child(
@@ -1382,86 +2689,1299 @@ impl MemosDesktop {
                                             .text_xs()
                                             .text_color(theme::graphite())
                                             .child(format!("from {sender}")),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .child(snippet),
                                     ),
                             ),
                     )
                     .child(
-                        div()
-                            .font_family(theme::mono_family())
-                            .text_xs()
-                            .text_color(theme::graphite())
-                            .child(resource_id(&name)),
+                        h_flex()
+                            .gap_1()
+                            .when_some(target_memo, |actions, memo_name| {
+                                actions.child(
+                                    Button::new(("open-notification", ix))
+                                        .ghost()
+                                        .icon(IconName::ArrowRight)
+                                        .tooltip("Open related memo")
+                                        .on_click(move |_, _, cx| {
+                                            open_view.update(cx, |this, cx| {
+                                                this.open_notification_memo(
+                                                    memo_name.clone(),
+                                                    cx,
+                                                );
+                                            });
+                                        }),
+                                )
+                            })
+                            .child(
+                                Button::new(("archive-notification", ix))
+                                    .ghost()
+                                    .icon(if archived {
+                                        IconName::Inbox
+                                    } else {
+                                        IconName::FolderClosed
+                                    })
+                                    .tooltip(if archived { "Mark unread" } else { "Archive" })
+                                    .on_click(move |_, _, cx| {
+                                        let status = if archived {
+                                            memos_api::types::UserNotificationStatus::Unread
+                                        } else {
+                                            memos_api::types::UserNotificationStatus::Archived
+                                        };
+                                        status_view.update(cx, |this, cx| {
+                                            this.set_notification_status(
+                                                status_name.clone(),
+                                                status,
+                                                cx,
+                                            );
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new(("delete-notification", ix))
+                                    .danger()
+                                    .icon(IconName::Delete)
+                                    .tooltip("Delete notification")
+                                    .on_click(move |_, _, cx| {
+                                        delete_view.update(cx, |this, cx| {
+                                            this.delete_notification_resource(
+                                                delete_name.clone(),
+                                                cx,
+                                            );
+                                        });
+                                    }),
+                            ),
                     )
-            }));
+                    }),
+            )
+            .when(has_more, |content| {
+                content.child(
+                    h_flex().justify_center().p_3().child(
+                        Button::new("load-more-notifications")
+                            .outline()
+                            .label("Load more")
+                            .loading(loading_more)
+                            .on_click(move |_, _, cx| {
+                                load_view.update(cx, |this, cx| {
+                                    this.load_more_notifications(cx);
+                                });
+                            }),
+                    ),
+                )
+            });
         module_page("Inbox", "Mentions and comments", content)
     }
 
-    fn render_settings_page(&self, cx: &mut Context<Self>) -> AnyElement {
-        let display_name = self
-            .current_user
-            .as_ref()
-            .and_then(|user| user.display_name.clone())
-            .unwrap_or_else(|| "Public session".into());
-        let username = self
-            .current_user
-            .as_ref()
-            .map(|user| format!("@{}", user.username))
-            .unwrap_or_else(|| "Anonymous".into());
-        let server = self
-            .session
-            .as_ref()
-            .map(|session| session.base_url().to_string())
-            .or_else(|| {
-                self.instance
-                    .as_ref()
-                    .and_then(|profile| profile.instance_url.clone())
-            })
-            .unwrap_or_else(|| "Local preview".into());
+    fn open_json_editor<T, F>(
+        &self,
+        title: &'static str,
+        value: T,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        on_save: F,
+    ) where
+        T: Serialize + DeserializeOwned + Clone + 'static,
+        F: Fn(&mut MemosDesktop, T, &mut Context<MemosDesktop>) + 'static,
+    {
+        let source = serde_json::to_string_pretty(&value).unwrap_or_default();
+        let editor = cx.new(|cx| {
+            InputState::new(window, cx)
+                .code_editor("json")
+                .multi_line(true)
+                .rows(22)
+                .default_value(source)
+        });
+        let view = cx.entity().clone();
+        let on_save = Rc::new(on_save);
+        window.open_dialog(cx, move |dialog, _, _| {
+            let editor = editor.clone();
+            let view = view.clone();
+            let on_save = on_save.clone();
+            dialog
+                .title(title)
+                .child(Input::new(&editor).h(px(520.0)))
+                .footer(move |_, _, _, _| {
+                    let editor = editor.clone();
+                    let view = view.clone();
+                    let on_save = on_save.clone();
+                    vec![
+                        Button::new("save-json-resource")
+                            .primary()
+                            .label("Save")
+                            .on_click(move |_, window, cx| {
+                                let source = editor.read(cx).value().to_string();
+                                match serde_json::from_str::<T>(&source) {
+                                    Ok(value) => {
+                                        window.close_dialog(cx);
+                                        view.update(cx, |this, cx| on_save(this, value, cx));
+                                    }
+                                    Err(error) => {
+                                        view.update(cx, |this, cx| {
+                                            this.error =
+                                                Some(format!("Invalid JSON for {title}: {error}"));
+                                            cx.notify();
+                                        });
+                                    }
+                                }
+                            }),
+                        Button::new("cancel-json-resource")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
 
+    pub(super) fn show_link_provider_dialog(
+        &self,
+        providers: Vec<memos_api::types::IdentityProvider>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let view = view.clone();
+            dialog.title("Link SSO identity").child(
+                v_flex()
+                    .gap_2()
+                    .children(providers.clone().into_iter().enumerate().map(
+                        move |(ix, provider)| {
+                            let view = view.clone();
+                            let label = provider.title.clone();
+                            Button::new(("link-sso-provider", ix))
+                                .large()
+                                .outline()
+                                .icon(IconName::ExternalLink)
+                                .label(label)
+                                .on_click(move |_, window, cx| {
+                                    window.close_dialog(cx);
+                                    view.update(cx, |this, cx| {
+                                        this.begin_identity_link(provider.clone(), window, cx);
+                                    });
+                                })
+                        },
+                    )),
+            )
+        });
+    }
+
+    fn open_profile_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(user) = self.current_user.clone() else {
+            return;
+        };
+        let username = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Username")
+                .default_value(user.username.clone())
+        });
+        let display_name = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Display name")
+                .default_value(user.display_name.clone().unwrap_or_default())
+        });
+        let email = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Email")
+                .default_value(user.email.clone().unwrap_or_default())
+        });
+        let avatar = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Avatar URL")
+                .default_value(user.avatar_url.clone().unwrap_or_default())
+        });
+        let description = cx.new(|cx| {
+            InputState::new(window, cx)
+                .multi_line(true)
+                .rows(4)
+                .placeholder("Description")
+                .default_value(user.description.clone().unwrap_or_default())
+        });
+        let password = cx.new(|cx| {
+            InputState::new(window, cx)
+                .masked(true)
+                .placeholder("New password (leave empty to keep current)")
+        });
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let username = username.clone();
+            let display_name = display_name.clone();
+            let email = email.clone();
+            let avatar = avatar.clone();
+            let description = description.clone();
+            let password = password.clone();
+            let view = view.clone();
+            let user = user.clone();
+            dialog
+                .title("Edit profile")
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&username))
+                        .child(Input::new(&display_name))
+                        .child(Input::new(&email))
+                        .child(Input::new(&avatar))
+                        .child(Input::new(&description).h(px(110.0)))
+                        .child(Input::new(&password).mask_toggle()),
+                )
+                .footer(move |_, _, _, _| {
+                    let username = username.clone();
+                    let display_name = display_name.clone();
+                    let email = email.clone();
+                    let avatar = avatar.clone();
+                    let description = description.clone();
+                    let password = password.clone();
+                    let view = view.clone();
+                    let user = user.clone();
+                    vec![
+                        Button::new("save-profile")
+                            .primary()
+                            .label("Save")
+                            .on_click(move |_, window, cx| {
+                                let mut user = user.clone();
+                                let username = username.read(cx).value().trim().to_string();
+                                if username.is_empty() {
+                                    return;
+                                }
+                                user.username = username;
+                                user.display_name = non_empty_text(display_name.read(cx).value());
+                                user.email = non_empty_text(email.read(cx).value());
+                                user.avatar_url = non_empty_text(avatar.read(cx).value());
+                                user.description = non_empty_text(description.read(cx).value());
+                                let password = password.read(cx).value().to_string();
+                                user.password = (!password.is_empty()).then_some(password);
+                                let mut mask = "username,display_name,email,avatar_url,description"
+                                    .to_string();
+                                if user.password.is_some() {
+                                    mask.push_str(",password");
+                                }
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.save_profile(user.clone(), mask.clone(), cx);
+                                });
+                            }),
+                        Button::new("cancel-profile")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn open_token_dialog(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let description = cx.new(|cx| InputState::new(window, cx).placeholder("Token description"));
+        let days = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Expiration in days; 0 means never")
+                .default_value("0")
+        });
+        let view = cx.entity().clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let description = description.clone();
+            let days = days.clone();
+            let view = view.clone();
+            dialog
+                .title("Create personal access token")
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&description))
+                        .child(Input::new(&days)),
+                )
+                .footer(move |_, _, _, _| {
+                    let description = description.clone();
+                    let days = days.clone();
+                    let view = view.clone();
+                    vec![
+                        Button::new("create-access-token")
+                            .primary()
+                            .label("Create")
+                            .on_click(move |_, window, cx| {
+                                let description = description.read(cx).value().to_string();
+                                let days = match days.read(cx).value().parse::<i32>() {
+                                    Ok(days) if days >= 0 => days,
+                                    _ => {
+                                        window.close_dialog(cx);
+                                        view.update(cx, |this, cx| {
+                                            this.error = Some(
+                                                "Token expiration must be zero or a positive number of days."
+                                                    .into(),
+                                            );
+                                            cx.notify();
+                                        });
+                                        return;
+                                    }
+                                };
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.create_access_token_resource(
+                                        description.clone(),
+                                        days,
+                                        cx,
+                                    );
+                                });
+                            }),
+                        Button::new("cancel-access-token")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn open_webhook_dialog(
+        &self,
+        existing: Option<memos_api::types::UserWebhook>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let display_name = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Webhook name")
+                .default_value(
+                    existing
+                        .as_ref()
+                        .and_then(|webhook| webhook.display_name.clone())
+                        .unwrap_or_default(),
+                )
+        });
+        let url = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("https://example.com/webhook")
+                .default_value(
+                    existing
+                        .as_ref()
+                        .and_then(|webhook| webhook.url.clone())
+                        .unwrap_or_default(),
+                )
+        });
+        let secret = cx.new(|cx| {
+            InputState::new(window, cx)
+                .masked(true)
+                .placeholder("Signing secret (optional)")
+        });
+        let view = cx.entity().clone();
+        let webhook_name = existing.and_then(|webhook| webhook.name);
+        window.open_dialog(cx, move |dialog, _, _| {
+            let display_name = display_name.clone();
+            let url = url.clone();
+            let secret = secret.clone();
+            let view = view.clone();
+            let webhook_name = webhook_name.clone();
+            dialog
+                .title(if webhook_name.is_some() {
+                    "Edit webhook"
+                } else {
+                    "Create webhook"
+                })
+                .child(
+                    v_flex()
+                        .gap_3()
+                        .child(Input::new(&display_name))
+                        .child(Input::new(&url))
+                        .child(Input::new(&secret).mask_toggle()),
+                )
+                .footer(move |_, _, _, _| {
+                    let display_name = display_name.clone();
+                    let url = url.clone();
+                    let secret = secret.clone();
+                    let view = view.clone();
+                    let webhook_name = webhook_name.clone();
+                    vec![
+                        Button::new("save-webhook")
+                            .primary()
+                            .label("Save")
+                            .on_click(move |_, window, cx| {
+                                let url = url.read(cx).value().trim().to_string();
+                                let valid_url = url::Url::parse(&url).is_ok_and(|url| {
+                                    matches!(url.scheme(), "http" | "https") && url.host().is_some()
+                                });
+                                if !valid_url {
+                                    window.close_dialog(cx);
+                                    view.update(cx, |this, cx| {
+                                        this.error =
+                                            Some("Webhook URL must be a valid HTTP(S) URL.".into());
+                                        cx.notify();
+                                    });
+                                    return;
+                                }
+                                let webhook = memos_api::types::UserWebhook {
+                                    create_time: None,
+                                    display_name: non_empty_text(display_name.read(cx).value()),
+                                    name: webhook_name.clone(),
+                                    signing_secret: non_empty_text(secret.read(cx).value()),
+                                    signing_secret_set: None,
+                                    update_time: None,
+                                    url: Some(url),
+                                };
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.save_webhook_resource(webhook.clone(), cx);
+                                });
+                            }),
+                        Button::new("cancel-webhook")
+                            .label("Cancel")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn settings_section_button(
+        &self,
+        section: SettingsSection,
+        label: &'static str,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let selected = self.settings_section == section;
+        let view = cx.entity().clone();
+        Button::new(match section {
+            SettingsSection::Account => "settings-account",
+            SettingsSection::Preferences => "settings-preferences",
+            SettingsSection::Tokens => "settings-tokens",
+            SettingsSection::Webhooks => "settings-webhooks",
+            SettingsSection::Administration => "settings-administration",
+        })
+        .ghost()
+        .when(selected, |button| button.primary())
+        .label(label)
+        .on_click(move |_, _, cx| {
+            view.update(cx, |this, cx| this.set_settings_section(section, cx));
+        })
+    }
+
+    fn render_account_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(user) = self.current_user.clone() else {
+            return empty_state(
+                IconName::User,
+                "Anonymous session",
+                "Sign in to edit an account.",
+            );
+        };
+        let edit_view = cx.entity().clone();
+        let link_identity_view = cx.entity().clone();
+        let identity_view = cx.entity().clone();
+        let display_name = user
+            .display_name
+            .clone()
+            .unwrap_or_else(|| user.username.clone());
+        let stats = self.account_resources.stats.clone().unwrap_or_default();
+        let identities = self.account_resources.identities.clone();
+        v_flex()
+            .gap_4()
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(
+                        h_flex()
+                            .min_h(px(72.0))
+                            .px_4()
+                            .items_center()
+                            .justify_between()
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(div().text_sm().font_semibold().child(display_name))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .child(format!("@{}", user.username)),
+                                    ),
+                            )
+                            .child(
+                                Button::new("edit-profile")
+                                    .primary()
+                                    .icon(IconName::Replace)
+                                    .label("Edit profile")
+                                    .on_click(move |_, window, cx| {
+                                        edit_view.update(cx, |this, cx| {
+                                            this.open_profile_dialog(window, cx);
+                                        });
+                                    }),
+                            ),
+                    )
+                    .child(setting_row(
+                        "Email",
+                        user.email.as_deref().unwrap_or("Not configured"),
+                        None,
+                    ))
+                    .child(setting_row(
+                        "Memos",
+                        &stats.total_memo_count.unwrap_or_default().to_string(),
+                        Some("Total memos created"),
+                    ))
+                    .child(setting_row(
+                        "Pinned",
+                        &stats.pinned_memos.len().to_string(),
+                        Some("Pinned memo count"),
+                    )),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(
+                        h_flex()
+                            .px_4()
+                            .py_2()
+                            .items_center()
+                            .justify_between()
+                            .child(panel_label("LINKED IDENTITIES"))
+                            .child(
+                                Button::new("link-sso-identity")
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .label("Link SSO")
+                                    .on_click(move |_, window, cx| {
+                                        link_identity_view.update(cx, |this, cx| {
+                                            this.discover_identity_link(window, cx);
+                                        });
+                                    }),
+                            ),
+                    )
+                    .when(identities.is_empty(), |panel| {
+                        panel.child(
+                            div()
+                                .p_4()
+                                .text_xs()
+                                .text_color(theme::graphite())
+                                .child("No linked SSO identities."),
+                        )
+                    })
+                    .children(
+                        identities
+                            .into_iter()
+                            .enumerate()
+                            .map(move |(ix, identity)| {
+                                let view = identity_view.clone();
+                                let name = identity.name.clone().unwrap_or_default();
+                                h_flex()
+                                    .min_h(px(56.0))
+                                    .px_4()
+                                    .items_center()
+                                    .justify_between()
+                                    .border_b_1()
+                                    .border_color(theme::line())
+                                    .child(
+                                        v_flex()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_sm()
+                                                    .child(identity.idp_name.unwrap_or_default()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .font_family(theme::mono_family())
+                                                    .text_xs()
+                                                    .text_color(theme::graphite())
+                                                    .child(identity.extern_uid.unwrap_or_default()),
+                                            ),
+                                    )
+                                    .child(
+                                        Button::new(("unlink-identity", ix))
+                                            .danger()
+                                            .icon(IconName::Delete)
+                                            .tooltip("Unlink identity")
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.delete_linked_identity_resource(
+                                                        name.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            }),
+                                    )
+                            }),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn render_preferences_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+        let settings = self.account_resources.settings.clone();
+        let view = cx.entity().clone();
+        v_flex()
+            .border_1()
+            .border_color(theme::line())
+            .when(settings.is_empty(), |panel| {
+                panel.child(empty_state(
+                    IconName::Settings2,
+                    "No user settings",
+                    "This Memos instance returned no user settings.",
+                ))
+            })
+            .children(settings.into_iter().enumerate().map(move |(ix, setting)| {
+                let view = view.clone();
+                let edit_setting = setting.clone();
+                let name = setting.name.clone().unwrap_or_default();
+                h_flex()
+                    .min_h(px(60.0))
+                    .px_4()
+                    .items_center()
+                    .justify_between()
+                    .border_b_1()
+                    .border_color(theme::line())
+                    .child(
+                        div()
+                            .font_family(theme::mono_family())
+                            .text_sm()
+                            .child(resource_id(&name)),
+                    )
+                    .child(
+                        Button::new(("edit-user-setting", ix))
+                            .ghost()
+                            .icon(IconName::Replace)
+                            .label("Edit")
+                            .on_click(move |_, window, cx| {
+                                view.update(cx, |this, cx| {
+                                    this.open_json_editor(
+                                        "Edit user setting",
+                                        edit_setting.clone(),
+                                        window,
+                                        cx,
+                                        |this, setting, cx| {
+                                            this.save_user_setting_resource(setting, cx);
+                                        },
+                                    );
+                                });
+                            }),
+                    )
+            }))
+            .into_any_element()
+    }
+
+    fn render_token_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+        let tokens = self.account_resources.tokens.clone();
+        let create_view = cx.entity().clone();
+        let delete_view = cx.entity().clone();
+        v_flex()
+            .gap_3()
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("new-access-token")
+                        .primary()
+                        .icon(IconName::Plus)
+                        .label("New token")
+                        .on_click(move |_, window, cx| {
+                            create_view.update(cx, |this, cx| {
+                                this.open_token_dialog(window, cx);
+                            });
+                        }),
+                ),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .when(tokens.is_empty(), |panel| {
+                        panel.child(
+                            div()
+                                .p_4()
+                                .text_xs()
+                                .text_color(theme::graphite())
+                                .child("No personal access tokens."),
+                        )
+                    })
+                    .children(tokens.into_iter().enumerate().map(move |(ix, token)| {
+                        let view = delete_view.clone();
+                        let name = token.name.clone().unwrap_or_default();
+                        h_flex()
+                            .min_h(px(60.0))
+                            .px_4()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::line())
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        div().text_sm().font_semibold().child(
+                                            token.description.unwrap_or_else(|| "Token".into()),
+                                        ),
+                                    )
+                                    .child(div().text_xs().text_color(theme::graphite()).child(
+                                        match token.expires_at {
+                                            Some(time) => format!(
+                                                "Expires {}",
+                                                time.with_timezone(&Local).format("%Y-%m-%d")
+                                            ),
+                                            None => "Never expires".into(),
+                                        },
+                                    )),
+                            )
+                            .child(
+                                Button::new(("delete-access-token", ix))
+                                    .danger()
+                                    .icon(IconName::Delete)
+                                    .tooltip("Delete token")
+                                    .on_click(move |_, _, cx| {
+                                        view.update(cx, |this, cx| {
+                                            this.delete_access_token_resource(name.clone(), cx);
+                                        });
+                                    }),
+                            )
+                    })),
+            )
+            .into_any_element()
+    }
+
+    fn render_webhook_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+        let webhooks = self.account_resources.webhooks.clone();
+        let create_view = cx.entity().clone();
+        let webhook_view = cx.entity().clone();
+        v_flex()
+            .gap_3()
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("new-webhook")
+                        .primary()
+                        .icon(IconName::Plus)
+                        .label("New webhook")
+                        .on_click(move |_, window, cx| {
+                            create_view.update(cx, |this, cx| {
+                                this.open_webhook_dialog(None, window, cx);
+                            });
+                        }),
+                ),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .when(webhooks.is_empty(), |panel| {
+                        panel.child(
+                            div()
+                                .p_4()
+                                .text_xs()
+                                .text_color(theme::graphite())
+                                .child("No webhooks configured."),
+                        )
+                    })
+                    .children(webhooks.into_iter().enumerate().map(move |(ix, webhook)| {
+                        let edit_view = webhook_view.clone();
+                        let secret_view = webhook_view.clone();
+                        let delete_view = webhook_view.clone();
+                        let edit_webhook = webhook.clone();
+                        let name = webhook.name.clone().unwrap_or_default();
+                        let secret_name = name.clone();
+                        let delete_name = name.clone();
+                        h_flex()
+                            .min_h(px(64.0))
+                            .px_4()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::line())
+                            .child(
+                                v_flex()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .child(div().text_sm().font_semibold().child(
+                                        webhook.display_name.unwrap_or_else(|| "Webhook".into()),
+                                    ))
+                                    .child(
+                                        div()
+                                            .font_family(theme::mono_family())
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .child(webhook.url.unwrap_or_default()),
+                                    ),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_1()
+                                    .when(webhook.signing_secret_set.unwrap_or(false), |actions| {
+                                        actions.child(
+                                            Button::new(("copy-webhook-secret", ix))
+                                                .ghost()
+                                                .icon(IconName::Copy)
+                                                .tooltip("Copy signing secret")
+                                                .on_click(move |_, _, cx| {
+                                                    secret_view.update(cx, |this, cx| {
+                                                        this.copy_webhook_secret(
+                                                            secret_name.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                    })
+                                    .child(
+                                        Button::new(("edit-webhook", ix))
+                                            .ghost()
+                                            .icon(IconName::Replace)
+                                            .tooltip("Edit webhook")
+                                            .on_click(move |_, window, cx| {
+                                                edit_view.update(cx, |this, cx| {
+                                                    this.open_webhook_dialog(
+                                                        Some(edit_webhook.clone()),
+                                                        window,
+                                                        cx,
+                                                    );
+                                                });
+                                            }),
+                                    )
+                                    .child(
+                                        Button::new(("delete-webhook", ix))
+                                            .danger()
+                                            .icon(IconName::Delete)
+                                            .tooltip("Delete webhook")
+                                            .on_click(move |_, _, cx| {
+                                                delete_view.update(cx, |this, cx| {
+                                                    this.delete_webhook_resource(
+                                                        delete_name.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            }),
+                                    ),
+                            )
+                    })),
+            )
+            .into_any_element()
+    }
+
+    fn render_admin_settings(&self, cx: &mut Context<Self>) -> AnyElement {
+        let users = self.admin_resources.users.clone();
+        let current_user_name = self
+            .current_user
+            .as_ref()
+            .and_then(|user| user.name.clone());
+        let settings = self.admin_resources.instance_settings.clone();
+        let providers = self.admin_resources.identity_providers.clone();
+        let resource_view = cx.entity().clone();
+        let email_view = cx.entity().clone();
+        let create_user_view = cx.entity().clone();
+        let create_idp_view = cx.entity().clone();
+        let instance_stats = self
+            .admin_resources
+            .instance_stats
+            .clone()
+            .unwrap_or_default();
+        let user_stats = self.admin_resources.user_stats.clone().unwrap_or_default();
+        let total_memos = user_stats
+            .stats
+            .iter()
+            .filter_map(|stats| stats.total_memo_count)
+            .sum::<i32>();
+        let new_user = memos_api::types::User {
+            avatar_url: None,
+            create_time: None,
+            description: None,
+            display_name: Some("New user".into()),
+            email: None,
+            name: None,
+            password: Some("change-me".into()),
+            role: memos_api::types::UserRole::User,
+            state: memos_api::types::UserState::Normal,
+            update_time: None,
+            username: "new-user".into(),
+        };
+        let new_provider = memos_api::types::IdentityProvider {
+            config: memos_api::types::IdentityProviderConfig::default(),
+            identifier_filter: None,
+            name: None,
+            title: "OAuth2 provider".into(),
+            type_: memos_api::types::IdentityProviderType::Oauth2,
+        };
+        v_flex()
+            .gap_4()
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(panel_label("RESOURCE STATS"))
+                    .child(setting_row(
+                        "Users",
+                        &self.admin_resources.users.len().to_string(),
+                        Some("Registered accounts"),
+                    ))
+                    .child(setting_row(
+                        "Total memos",
+                        &total_memos.to_string(),
+                        Some("Across all users"),
+                    ))
+                    .child(setting_row(
+                        "Database",
+                        instance_stats
+                            .database
+                            .as_ref()
+                            .and_then(|stats| stats.driver.as_deref())
+                            .unwrap_or("Unknown"),
+                        instance_stats
+                            .database
+                            .as_ref()
+                            .and_then(|stats| stats.size_bytes.as_deref()),
+                    ))
+                    .child(setting_row(
+                        "Local storage bytes",
+                        instance_stats.local_storage_bytes.as_deref().unwrap_or("Unknown"),
+                        None,
+                    ))
+                    .child(
+                        h_flex().justify_end().p_3().child(
+                            Button::new("test-instance-email")
+                                .outline()
+                                .icon(IconName::ExternalLink)
+                                .label("Send test email")
+                                .on_click(move |_, _, cx| {
+                                    email_view.update(cx, |this, cx| {
+                                        this.test_instance_email(cx);
+                                    });
+                                }),
+                        ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(
+                        h_flex()
+                            .px_4()
+                            .py_2()
+                            .items_center()
+                            .justify_between()
+                            .child(panel_label("USERS"))
+                            .child(
+                                Button::new("create-admin-user")
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .label("New user")
+                                    .on_click(move |_, window, cx| {
+                                        let value = new_user.clone();
+                                        create_user_view.update(cx, |this, cx| {
+                                            this.open_json_editor(
+                                                "Create user",
+                                                value,
+                                                window,
+                                                cx,
+                                                |this, user, cx| {
+                                                    this.save_admin_user(user, cx);
+                                                },
+                                            );
+                                        });
+                                    }),
+                            ),
+                    )
+                    .children(users.into_iter().enumerate().map({
+                        let resource_view = resource_view.clone();
+                        let current_user_name = current_user_name.clone();
+                        move |(ix, user)| {
+                            let profile_view = resource_view.clone();
+                            let edit_view = resource_view.clone();
+                            let delete_view = resource_view.clone();
+                            let edit_user = user.clone();
+                            let name = user.name.clone().unwrap_or_default();
+                            let can_delete = Some(name.clone()) != current_user_name;
+                            let profile_name = name.clone();
+                            h_flex()
+                                .min_h(px(60.0))
+                                .px_4()
+                                .items_center()
+                                .justify_between()
+                                .border_b_1()
+                                .border_color(theme::line())
+                                .child(
+                                    v_flex()
+                                        .gap_1()
+                                        .child(
+                                            div().text_sm().font_semibold().child(
+                                                user.display_name
+                                                    .unwrap_or_else(|| user.username.clone()),
+                                            ),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(theme::graphite())
+                                                .child(format!(
+                                                    "@{} · {:?}",
+                                                    user.username, user.role
+                                                )),
+                                        ),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_1()
+                                        .child(
+                                            Button::new(("open-user-profile", ix))
+                                                .ghost()
+                                                .icon(IconName::User)
+                                                .tooltip("Open profile")
+                                                .on_click(move |_, _, cx| {
+                                                    profile_view.update(cx, |this, cx| {
+                                                        this.open_user_profile(
+                                                            profile_name.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new(("edit-admin-user", ix))
+                                                .ghost()
+                                                .icon(IconName::Replace)
+                                                .tooltip("Edit user JSON")
+                                                .on_click(move |_, window, cx| {
+                                                    edit_view.update(cx, |this, cx| {
+                                                        this.open_json_editor(
+                                                            "Edit user",
+                                                            edit_user.clone(),
+                                                            window,
+                                                            cx,
+                                                            |this, user, cx| {
+                                                                this.save_admin_user(user, cx);
+                                                            },
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new(("delete-admin-user", ix))
+                                                .danger()
+                                                .disabled(!can_delete)
+                                                .icon(IconName::Delete)
+                                                .tooltip("Delete user")
+                                                .on_click(move |_, _, cx| {
+                                                    delete_view.update(cx, |this, cx| {
+                                                        this.delete_admin_user(name.clone(), cx);
+                                                    });
+                                                }),
+                                        ),
+                                )
+                        }
+                    })),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(panel_label("INSTANCE SETTINGS"))
+                    .children(settings.into_iter().enumerate().map({
+                        let resource_view = resource_view.clone();
+                        move |(ix, setting)| {
+                            let view = resource_view.clone();
+                            let edit_setting = setting.clone();
+                            h_flex()
+                                .min_h(px(56.0))
+                                .px_4()
+                                .items_center()
+                                .justify_between()
+                                .border_b_1()
+                                .border_color(theme::line())
+                                .child(
+                                    div()
+                                        .font_family(theme::mono_family())
+                                        .text_sm()
+                                        .child(
+                                            setting
+                                                .name
+                                                .as_deref()
+                                                .map(resource_id)
+                                                .unwrap_or_else(|| "UNKNOWN".into()),
+                                        ),
+                                )
+                                .child(
+                                    Button::new(("edit-instance-setting", ix))
+                                        .ghost()
+                                        .icon(IconName::Replace)
+                                        .label("Edit JSON")
+                                        .on_click(move |_, window, cx| {
+                                            view.update(cx, |this, cx| {
+                                                this.open_json_editor(
+                                                    "Edit instance setting",
+                                                    edit_setting.clone(),
+                                                    window,
+                                                    cx,
+                                                    |this, setting, cx| {
+                                                        this.save_instance_setting_resource(
+                                                            setting, cx,
+                                                        );
+                                                    },
+                                                );
+                                            });
+                                        }),
+                                )
+                        }
+                    })),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(
+                        h_flex()
+                            .px_4()
+                            .py_2()
+                            .items_center()
+                            .justify_between()
+                            .child(panel_label("IDENTITY PROVIDERS"))
+                            .child(
+                                Button::new("create-idp")
+                                    .primary()
+                                    .icon(IconName::Plus)
+                                    .label("New provider")
+                                    .on_click(move |_, window, cx| {
+                                        let value = new_provider.clone();
+                                        create_idp_view.update(cx, |this, cx| {
+                                            this.open_json_editor(
+                                                "Create identity provider",
+                                                value,
+                                                window,
+                                                cx,
+                                                |this, provider, cx| {
+                                                    this.save_identity_provider_resource(
+                                                        provider, None, cx,
+                                                    );
+                                                },
+                                            );
+                                        });
+                                    }),
+                            ),
+                    )
+                    .children(providers.into_iter().enumerate().map({
+                        let resource_view = resource_view.clone();
+                        move |(ix, provider)| {
+                            let edit_view = resource_view.clone();
+                            let delete_view = resource_view.clone();
+                            let edit_provider = provider.clone();
+                            let name = provider.name.clone().unwrap_or_default();
+                            h_flex()
+                                .min_h(px(58.0))
+                                .px_4()
+                                .items_center()
+                                .justify_between()
+                                .border_b_1()
+                                .border_color(theme::line())
+                                .child(
+                                    v_flex()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .child(provider.title),
+                                        )
+                                        .child(
+                                            div()
+                                                .font_family(theme::mono_family())
+                                                .text_xs()
+                                                .text_color(theme::graphite())
+                                                .child(format!("{:?}", provider.type_)),
+                                        ),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_1()
+                                        .child(
+                                            Button::new(("edit-idp", ix))
+                                                .ghost()
+                                                .icon(IconName::Replace)
+                                                .on_click(move |_, window, cx| {
+                                                    edit_view.update(cx, |this, cx| {
+                                                        this.open_json_editor(
+                                                            "Edit identity provider",
+                                                            edit_provider.clone(),
+                                                            window,
+                                                            cx,
+                                                            |this, provider, cx| {
+                                                                this.save_identity_provider_resource(
+                                                                    provider, None, cx,
+                                                                );
+                                                            },
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new(("delete-idp", ix))
+                                                .danger()
+                                                .icon(IconName::Delete)
+                                                .on_click(move |_, _, cx| {
+                                                    delete_view.update(cx, |this, cx| {
+                                                        this.delete_identity_provider_resource(
+                                                            name.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        ),
+                                )
+                        }
+                    })),
+            )
+            .into_any_element()
+    }
+
+    fn render_settings_page(&self, cx: &mut Context<Self>) -> AnyElement {
+        let is_admin = self
+            .current_user
+            .as_ref()
+            .map(|user| user.role == memos_api::types::UserRole::Admin)
+            .unwrap_or(false);
+        let content = match self.settings_section {
+            SettingsSection::Account => self.render_account_settings(cx),
+            SettingsSection::Preferences => self.render_preferences_settings(cx),
+            SettingsSection::Tokens => self.render_token_settings(cx),
+            SettingsSection::Webhooks => self.render_webhook_settings(cx),
+            SettingsSection::Administration => self.render_admin_settings(cx),
+        };
         module_page(
             "Settings",
             "Account and instance",
             v_flex()
-                .border_1()
-                .border_color(theme::line())
-                .child(setting_row("Account", &display_name, Some(&username)))
-                .child(setting_row("Server", &server, None))
-                .child(setting_row(
-                    "Version",
-                    self.instance
-                        .as_ref()
-                        .and_then(|profile| profile.version.as_deref())
-                        .unwrap_or("Unknown"),
-                    None,
-                ))
+                .gap_4()
                 .child(
                     h_flex()
-                        .min_h(px(64.0))
-                        .px_4()
-                        .items_center()
-                        .justify_between()
-                        .border_t_1()
-                        .border_color(theme::line())
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(div().text_sm().font_semibold().child("Session"))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(theme::graphite())
-                                        .child("Disconnect from this instance"),
-                                ),
-                        )
-                        .child(
-                            Button::new("disconnect")
-                                .danger()
-                                .outline()
-                                .label("Disconnect")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.disconnect(cx);
-                                })),
-                        ),
+                        .gap_1()
+                        .flex_wrap()
+                        .child(self.settings_section_button(
+                            SettingsSection::Account,
+                            "Account",
+                            cx,
+                        ))
+                        .child(self.settings_section_button(
+                            SettingsSection::Preferences,
+                            "Preferences",
+                            cx,
+                        ))
+                        .child(self.settings_section_button(SettingsSection::Tokens, "Tokens", cx))
+                        .child(self.settings_section_button(
+                            SettingsSection::Webhooks,
+                            "Webhooks",
+                            cx,
+                        ))
+                        .when(is_admin, |nav| {
+                            nav.child(self.settings_section_button(
+                                SettingsSection::Administration,
+                                "Administration",
+                                cx,
+                            ))
+                        }),
+                )
+                .child(content)
+                .child(
+                    h_flex().justify_end().child(
+                        Button::new("disconnect")
+                            .danger()
+                            .outline()
+                            .label("Disconnect")
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.disconnect(window, cx)),
+                            ),
+                    ),
                 ),
         )
     }
@@ -1588,6 +4108,35 @@ fn setting_row(label: &'static str, value: &str, secondary: Option<&str>) -> Any
         .into_any_element()
 }
 
+struct MemoTask {
+    line_index: usize,
+    checked: bool,
+    label: String,
+}
+
+fn markdown_tasks(content: &str) -> Vec<MemoTask> {
+    content
+        .lines()
+        .enumerate()
+        .filter_map(|(line_index, line)| {
+            let marker = line.find("[ ]").map(|index| (index, false)).or_else(|| {
+                line.find("[x]")
+                    .or_else(|| line.find("[X]"))
+                    .map(|index| (index, true))
+            })?;
+            let prefix = line[..marker.0].trim_start();
+            if !matches!(prefix, "-" | "*" | "+") {
+                return None;
+            }
+            Some(MemoTask {
+                line_index,
+                checked: marker.1,
+                label: line[marker.0 + 3..].trim().to_string(),
+            })
+        })
+        .collect()
+}
+
 fn reaction_counts(reactions: &[memos_api::types::Reaction]) -> BTreeMap<String, usize> {
     let mut counts = BTreeMap::new();
     for reaction in reactions {
@@ -1639,6 +4188,27 @@ fn relative_time(time: DateTime<Utc>) -> String {
     } else {
         time.with_timezone(&Local).format("%b %d").to_string()
     }
+}
+
+fn non_empty_text(value: gpui::SharedString) -> Option<String> {
+    let value = value.trim().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+fn attachment_metadata(attachment: &memos_api::types::Attachment) -> String {
+    let mut parts = vec![attachment.type_.clone()];
+    if let Some(size) = attachment.size.as_deref().filter(|size| !size.is_empty()) {
+        parts.push(format!("{size} bytes"));
+    }
+    if let Some(motion) = attachment.motion_media.as_ref() {
+        if let Some(family) = motion.family {
+            parts.push(family.to_string());
+        }
+        if let Some(role) = motion.role {
+            parts.push(role.to_string());
+        }
+    }
+    parts.join(" · ")
 }
 
 fn visibility_label(visibility: MemoVisibility) -> &'static str {

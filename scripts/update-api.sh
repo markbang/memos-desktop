@@ -20,4 +20,15 @@ RUSTFMT="$(rustup which --toolchain nightly rustfmt)" \
     --version 0.30.0
 
 mv "$TMP_DIR/memos-api/src/lib.rs" crates/memos-api/src/generated.rs
+
+# Progenitor's stand-alone CLI cannot configure an inner client state. Add a
+# clone-shared authorization slot so sessions for the same base URL stay isolated.
+perl -0pi -e 's/pub struct Client \{\n    pub\(crate\) baseurl:/pub struct Client {\n    pub(crate) authorization: crate::auth::AuthorizationState,\n    pub(crate) baseurl:/' crates/memos-api/src/generated.rs
+perl -0pi -e 's/Self \{\n            baseurl: baseurl\.to_string\(\),\n            client,\n        \}/Self {\n            authorization: Default::default(),\n            baseurl: baseurl.to_string(),\n            client,\n        }/' crates/memos-api/src/generated.rs
+if ! grep -q 'authorization: crate::auth::AuthorizationState' crates/memos-api/src/generated.rs \
+  || ! grep -q 'authorization: Default::default()' crates/memos-api/src/generated.rs; then
+  echo "failed to add generated client authorization state and initializer" >&2
+  exit 1
+fi
+
 cargo fmt --all

@@ -1,6 +1,8 @@
 mod api;
+mod api_ext;
 mod config;
 mod demo;
+mod sso;
 mod theme;
 mod ui;
 

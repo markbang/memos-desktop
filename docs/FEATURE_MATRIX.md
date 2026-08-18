@@ -2,65 +2,49 @@
 
 Status values:
 
-- **Done**: implemented in the desktop UI and wired to the API
-- **Foundation**: typed API and navigation surface exist; complete UI workflow remains
-- **Planned**: not implemented yet
+- **Done**: implemented in the desktop UI and wired to Memos v0.30
+- **Foundation**: usable transport or presentation exists, but the native workflow is intentionally limited
+- **Desktop roadmap**: desktop-only enhancement; not required for Memos v0.30 server parity
 
 | Area | Capability | Status |
 |---|---|---|
-| Connection | Instance profile and version discovery | Done |
-| Authentication | Password sign-in | Done |
-| Authentication | Personal access token session | Done |
-| Authentication | Anonymous/public browsing | Done |
-| Authentication | Refresh-cookie token renewal | Done |
-| Authentication | SSO with PKCE callback | Foundation |
-| Authentication | Sign-out and disconnect | Done |
-| Timeline | Normal and archived feeds | Done |
-| Timeline | Pagination and incremental loading | Planned |
-| Timeline | Local content/tag search | Done |
-| Timeline | Server-side CEL filters and ordering | Foundation |
-| Timeline | Pinned, task, link, and code filters | Done |
-| Memo | Create Markdown memo | Done |
-| Memo | Private, Protected, and Public visibility | Done |
-| Memo | Rich Markdown display | Done |
-| Memo | Edit content and creation time | Planned |
-| Memo | Pin and unpin | Done |
-| Memo | Archive and restore | Done |
-| Memo | Permanent delete with confirmation | Done |
-| Memo | Location metadata | Foundation |
-| Memo | Task checkbox mutation | Planned |
-| Memo | Link previews and metadata | Foundation |
-| Relations | References and backlinks | Foundation |
-| Comments | Create, list, paginate, and delete comments | Foundation |
-| Reactions | List, add, replace, and remove reactions | Foundation |
-| Sharing | Create, expire, list, and revoke share links | Foundation |
-| Sharing | Open shared memo without authentication | Foundation |
-| Attachments | Attachment library navigation | Foundation |
-| Attachments | Upload inline data and external links | Foundation |
-| Attachments | Image, video, audio, and document previews | Planned |
-| Attachments | Media metadata and motion-photo groups | Foundation |
-| Views | Built-in desktop quick views | Done |
-| Views | List/create/edit/delete server Memo Views | Foundation |
-| Inbox | Notification destination and empty state | Foundation |
-| Inbox | Mention/comment list, read/archive/delete | Foundation |
-| Users | User profile and public memo feed | Foundation |
-| Users | Account profile, username, email, avatar, password | Foundation |
-| Tokens | List/create/delete personal access tokens | Foundation |
-| Webhooks | List/create/edit/delete and signing secret | Foundation |
-| Settings | User locale, theme, memo layout, and tag metadata | Foundation |
-| Admin | User management and statistics | Foundation |
-| Admin | General instance policy and branding | Foundation |
-| Admin | Storage backends and upload limits | Foundation |
-| Admin | Memo policy and reaction configuration | Foundation |
-| Admin | SMTP notification configuration and test | Foundation |
-| Admin | OAuth identity providers | Foundation |
-| Admin | AI providers and transcription policy | Foundation |
-| Admin | Instance resource statistics | Foundation |
-| AI | Audio transcription request | Foundation |
-| Live updates | SSE memo and notification refresh | Planned |
-| Desktop | Multi-profile connection switcher | Planned |
-| Desktop | System tray and global quick capture | Planned |
-| Desktop | Protocol/deep-link handling | Planned |
-| Desktop | Offline cache and outbox | Planned |
+| Connection | Instance profile, version, URL validation, and demo discovery | Done |
+| Authentication | Password, PAT, anonymous, and shared-link sessions | Done |
+| Authentication | Registration and first-admin instance initialization | Done |
+| Authentication | Isolated refresh-cookie renewal and sign-out | Done |
+| Authentication | OAuth2/SSO with local PKCE callback and state validation | Done |
+| Authentication | Link and unlink SSO identities | Done |
+| Timeline | Normal, archived, public Explore, and user Profile feeds | Done |
+| Timeline | Server CEL search/filter/order and incremental pagination | Done |
+| Timeline | Pinned, task, link, code, tag, and visibility filters | Done |
+| Memo | Create and render Markdown memos | Done |
+| Memo | Edit content, creation time, visibility, state, pin, and location | Done |
+| Memo | Task checkbox mutation and permanent delete confirmation | Done |
+| Memo | Link metadata previews | Done |
+| Relations | List, add, and remove references and backlinks | Done |
+| Comments | Create, fully paginate, render, and delete comments | Done |
+| Reactions | List, add, and remove reactions | Done |
+| Sharing | Create expiring links, copy, list, and revoke | Done |
+| Sharing | Open a shared memo without authentication | Done |
+| Attachments | Paginated library, multi-file upload, external links, edit, and delete | Done |
+| Attachments | Authenticated image thumbnails and default-app opening for all file types | Done |
+| Attachments | Motion-photo metadata grouping and native audio/video playback | Foundation |
+| Shortcuts | List, create, edit, execute, and delete v0.30 saved CEL shortcuts | Done |
+| Inbox | Paginated mention/comment notifications and related-Memo navigation | Done |
+| Inbox | Archive, restore to unread, and delete | Done |
+| Users | Public profiles, statistics, author navigation, and paginated memos | Done |
+| Users | Registration plus account username/email/avatar/description/password editing | Done |
+| Tokens | List, create, reveal-once/copy, and delete personal access tokens | Done |
+| Webhooks | List, create, edit, delete, and copy signing secrets | Done |
+| Settings | User general/tag/webhook setting resources | Done |
+| Admin | User CRUD, public profiles, and cross-user statistics | Done |
+| Admin | General, storage, memo, tag, notification, and AI instance settings | Done |
+| Admin | SMTP test, OAuth2 identity-provider CRUD, and instance statistics | Done |
+| AI | Select audio and insert server transcription into the composer | Done |
+| Live updates | Authenticated SSE reconnect and memo/comment/reaction refresh | Done |
+| Desktop | Multi-profile connection switcher | Desktop roadmap |
+| Desktop | System tray and global quick capture | Desktop roadmap |
+| Desktop | Protocol/deep-link registration | Desktop roadmap |
+| Desktop | Offline cache and mutation outbox | Desktop roadmap |
 
-The generated `memos-api` crate already contains typed methods and models for every v0.30 OpenAPI operation. “Foundation” therefore means presentation and workflow work, not missing transport coverage.
+The generated `memos-api` crate contains typed methods and models for all 73 operations in the official Memos v0.30.0 OpenAPI contract. The ignored live integration test additionally exercises registration, independent same-server sessions, refresh rotation, SSE, memo CRUD/state/location, comments, notifications, reactions, relations, shares, attachments and thumbnails, shortcuts, settings, PATs, webhooks, statistics, and cleanup against the official v0.30 binary.

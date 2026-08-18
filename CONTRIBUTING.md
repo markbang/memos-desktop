@@ -15,13 +15,13 @@ On Debian or Ubuntu, install native GPUI build dependencies with `scripts/instal
 
 ## API Contract Updates
 
-`api/openapi.yaml` is sourced from the upstream Memos project. Regenerate the typed client with:
+`api/openapi.yaml` is pinned to the official Memos `v0.30.0` tag. Do not replace it with Memos `main` without an explicit supported-version change. Regenerate the typed client with:
 
 ```bash
 scripts/update-api.sh
 ```
 
-The script requires Rust stable and a nightly `rustfmt` component because Progenitor formats generated source with unstable formatting options.
+The script requires Rust stable and a nightly `rustfmt` component because Progenitor formats generated source with unstable formatting options. For a disposable official v0.30 instance, the ignored live round-trip is available through `MEMOS_LIVE_URL`, `MEMOS_LIVE_USERNAME`, and `MEMOS_LIVE_PASSWORD`.
 
 ## Commit Messages
 

@@ -16,14 +16,17 @@ anyhow.workspace = true
 base64.workspace = true
 chrono.workspace = true
 directories.workspace = true
+futures.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
 gpui-component-assets.workspace = true
 memos-api = { path = "../memos-api" }
 mime_guess.workspace = true
-reqwest = { version = "0.13", default-features = false, features = ["cookies", "json", "rustls"] }
+rand.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 url.workspace = true
