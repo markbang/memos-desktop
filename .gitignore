@@ -1,4 +1,5 @@
 /target/
+/vendor/*/target/
 
 # Local environment and credentials
 .env

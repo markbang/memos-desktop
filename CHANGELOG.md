@@ -21,3 +21,4 @@ The project follows [Semantic Versioning](https://semver.org/) and uses GitHub R
 - Isolated authentication state between separate sessions connected to the same server.
 - Used Connect RPC for v0.30 refresh and sign-out because its REST gateway does not forward request cookies.
 - Pinned API generation to the stable v0.30 `ShortcutService` instead of the post-release Memos main contract.
+- Backported the upstream `grid` dimension-overflow fix while GPUI remains pinned to 0.2.2.

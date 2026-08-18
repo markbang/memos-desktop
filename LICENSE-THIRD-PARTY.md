@@ -6,5 +6,6 @@ Memos Desktop is an independent client. It communicates with Memos through the u
 - GPUI: Apache License 2.0, https://github.com/zed-industries/zed
 - GPUI Component: Apache License 2.0, https://github.com/longbridge/gpui-component
 - Progenitor: Apache License 2.0, https://github.com/oxidecomputer/progenitor
+- Grid: MIT License, https://github.com/becheran/grid (vendored v0.18.0 security backport)
 
 The dependency lockfile is the authoritative source for the exact versions used by a build. This file records project-level attribution and does not replace the license text distributed by each dependency.

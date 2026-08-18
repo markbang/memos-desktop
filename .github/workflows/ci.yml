@@ -33,6 +33,8 @@ jobs:
         run: cargo fmt --all -- --check
       - name: Check shell syntax
         run: bash -n scripts/*.sh
+      - name: Test vendored grid security backport
+        run: cargo test --manifest-path vendor/grid/Cargo.toml --locked
 
   platform:
     name: ${{ matrix.name }}

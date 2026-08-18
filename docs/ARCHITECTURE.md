@@ -33,4 +33,4 @@ Each generated `Client` owns clone-shared authentication state, so two sessions 
 
 ## Compatibility
 
-The workspace pins the published GPUI `0.2.2` and GPUI Component `0.5.1` releases. `Cargo.lock` is committed because the UI ecosystem remains pre-1.0 and exact dependency resolution is part of the application contract.
+The workspace pins the published GPUI `0.2.2` and GPUI Component `0.5.1` releases. Because that GPUI line pins `taffy 0.9.0` and vulnerable `grid 0.18.0`, `vendor/grid` carries the upstream dimension-overflow fix without changing the GPUI/taffy API contract. `Cargo.lock` is committed because the UI ecosystem remains pre-1.0 and exact dependency resolution is part of the application contract.
