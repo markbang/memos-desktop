@@ -38,6 +38,7 @@ pub struct ApiSession {
     base_url: String,
     client: Client,
     runtime: Arc<Runtime>,
+    identity: Arc<()>,
     access_token_expires_at: Arc<RwLock<Option<DateTime<Utc>>>>,
     refresh_lock: Arc<Mutex<()>>,
 }
@@ -105,6 +106,7 @@ impl ApiSession {
             client: Client::new_with_client(&base_url, http),
             base_url,
             runtime,
+            identity: Arc::new(()),
             access_token_expires_at: Arc::new(RwLock::new(None)),
             refresh_lock: Arc::new(Mutex::new(())),
         })
@@ -112,6 +114,10 @@ impl ApiSession {
 
     pub fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    pub(crate) fn same_session(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.identity, &other.identity)
     }
 
     pub async fn instance_profile(&self) -> Result<types::InstanceProfile, ApiError> {

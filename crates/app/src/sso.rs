@@ -96,6 +96,9 @@ impl SsoFlow {
                             Ok(0) => break,
                             Ok(count) => {
                                 read += count;
+                                if Instant::now() >= deadline {
+                                    return Err(ApiError::Request("SSO callback timed out".into()));
+                                }
                                 if request[..read]
                                     .windows(4)
                                     .any(|window| window == b"\r\n\r\n")
@@ -114,7 +117,7 @@ impl SsoFlow {
                                 if Instant::now() >= deadline {
                                     return Err(ApiError::Request("SSO callback timed out".into()));
                                 }
-                                break;
+                                continue;
                             }
                             Err(error) => return Err(ApiError::Request(error.to_string())),
                         }

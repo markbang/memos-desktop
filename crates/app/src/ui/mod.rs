@@ -384,7 +384,7 @@ impl MemosDesktop {
             return;
         };
         let requested_memo_name = memo_name.clone();
-        let session_base_url = session.base_url().to_string();
+        let request_session = session.clone();
         self.detail_loading = true;
         cx.spawn(async move |this, cx| {
             let result = async {
@@ -405,7 +405,7 @@ impl MemosDesktop {
                 let same_session = this
                     .session
                     .as_ref()
-                    .is_some_and(|session| session.base_url() == session_base_url);
+                    .is_some_and(|session| session.same_session(&request_session));
                 if !same_session
                     || this.selected_memo_name.as_deref() != Some(requested_memo_name.as_str())
                 {
@@ -2653,6 +2653,7 @@ impl MemosDesktop {
                 self.detail_tab = DetailTab::Content;
             }
         } else {
+            self.detail_loading = false;
             self.detail = MemoDetailData::default();
             self.detail_error = None;
         }
