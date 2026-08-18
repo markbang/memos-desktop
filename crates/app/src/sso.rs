@@ -80,7 +80,7 @@ impl SsoFlow {
 
     pub fn wait_for_callback(self) -> Result<SsoCallback, ApiError> {
         let deadline = Instant::now() + Duration::from_secs(300);
-        loop {
+        'accept: loop {
             match self.listener.accept() {
                 Ok((mut stream, _)) => {
                     stream
@@ -117,7 +117,7 @@ impl SsoFlow {
                                 if Instant::now() >= deadline {
                                     return Err(ApiError::Request("SSO callback timed out".into()));
                                 }
-                                continue;
+                                continue 'accept;
                             }
                             Err(error) => return Err(ApiError::Request(error.to_string())),
                         }
