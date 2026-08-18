@@ -1,0 +1,5084 @@
+{
+  "components": {
+    "schemas": {
+      "Attachment": {
+        "properties": {
+          "content": {
+            "description": "Input only. The content of the attachment.",
+            "format": "bytes",
+            "type": "string",
+            "writeOnly": true
+          },
+          "createTime": {
+            "description": "Output only. The creation timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "externalLink": {
+            "description": "Optional. The external link of the attachment.",
+            "type": "string"
+          },
+          "filename": {
+            "description": "The filename of the attachment.",
+            "type": "string"
+          },
+          "mediaMetadata": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MediaMetadata"
+              }
+            ],
+            "description": "Optional. Immutable normalized media metadata explicitly supplied by the client at creation time."
+          },
+          "memo": {
+            "description": "Optional. The related memo. Refer to `Memo.name`.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "motionMedia": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MotionMedia"
+              }
+            ],
+            "description": "Optional. Motion media metadata."
+          },
+          "name": {
+            "description": "The name of the attachment.\n Format: attachments/{attachment}",
+            "type": "string"
+          },
+          "size": {
+            "description": "Output only. The size of the attachment in bytes.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "type": {
+            "description": "The MIME type of the attachment.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "type"
+        ],
+        "type": "object"
+      },
+      "BatchDeleteAttachmentsRequest": {
+        "properties": {
+          "names": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "type": "object"
+      },
+      "BatchGetInstanceSettingsRequest": {
+        "description": "Request message for BatchGetInstanceSettings method.",
+        "properties": {
+          "names": {
+            "description": "The resource names of the instance settings.\n Format: instance/settings/{setting}",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "names"
+        ],
+        "type": "object"
+      },
+      "BatchGetInstanceSettingsResponse": {
+        "description": "Response message for BatchGetInstanceSettings method.",
+        "properties": {
+          "settings": {
+            "description": "The instance settings in the same order as the input names.",
+            "items": {
+              "$ref": "#/components/schemas/InstanceSetting"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "BatchGetLinkMetadataRequest": {
+        "properties": {
+          "urls": {
+            "description": "Required. The link URLs.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "urls"
+        ],
+        "type": "object"
+      },
+      "BatchGetLinkMetadataResponse": {
+        "properties": {
+          "linkMetadata": {
+            "description": "The link metadata list, in the same order as the input URLs.",
+            "items": {
+              "$ref": "#/components/schemas/LinkMetadata"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "BatchGetUsersRequest": {
+        "properties": {
+          "usernames": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "BatchGetUsersResponse": {
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/User"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Color": {
+        "description": "Represents a color in the RGBA color space. This representation is designed\n for simplicity of conversion to/from color representations in various\n languages over compactness. For example, the fields of this representation\n can be trivially provided to the constructor of `java.awt.Color` in Java; it\n can also be trivially provided to UIColor's `+colorWithRed:green:blue:alpha`\n method in iOS; and, with just a little work, it can be easily formatted into\n a CSS `rgba()` string in JavaScript.\n\n This reference page doesn't carry information about the absolute color\n space\n that should be used to interpret the RGB value (e.g. sRGB, Adobe RGB,\n DCI-P3, BT.2020, etc.). By default, applications should assume the sRGB color\n space.\n\n When color equality needs to be decided, implementations, unless\n documented otherwise, treat two colors as equal if all their red,\n green, blue, and alpha values each differ by at most 1e-5.\n\n Example (Java):\n\n      import com.google.type.Color;\n\n      // ...\n      public static java.awt.Color fromProto(Color protocolor) {\n        float alpha = protocolor.hasAlpha()\n            ? protocolor.getAlpha().getValue()\n            : 1.0;\n\n        return new java.awt.Color(\n            protocolor.getRed(),\n            protocolor.getGreen(),\n            protocolor.getBlue(),\n            alpha);\n      }\n\n      public static Color toProto(java.awt.Color color) {\n        float red = (float) color.getRed();\n        float green = (float) color.getGreen();\n        float blue = (float) color.getBlue();\n        float denominator = 255.0;\n        Color.Builder resultBuilder =\n            Color\n                .newBuilder()\n                .setRed(red / denominator)\n                .setGreen(green / denominator)\n                .setBlue(blue / denominator);\n        int alpha = color.getAlpha();\n        if (alpha != 255) {\n          result.setAlpha(\n              FloatValue\n                  .newBuilder()\n                  .setValue(((float) alpha) / denominator)\n                  .build());\n        }\n        return resultBuilder.build();\n      }\n      // ...\n\n Example (iOS / Obj-C):\n\n      // ...\n      static UIColor* fromProto(Color* protocolor) {\n         float red = [protocolor red];\n         float green = [protocolor green];\n         float blue = [protocolor blue];\n         FloatValue* alpha_wrapper = [protocolor alpha];\n         float alpha = 1.0;\n         if (alpha_wrapper != nil) {\n           alpha = [alpha_wrapper value];\n         }\n         return [UIColor colorWithRed:red green:green blue:blue alpha:alpha];\n      }\n\n      static Color* toProto(UIColor* color) {\n          CGFloat red, green, blue, alpha;\n          if (![color getRed:&red green:&green blue:&blue alpha:&alpha]) {\n            return nil;\n          }\n          Color* result = [[Color alloc] init];\n          [result setRed:red];\n          [result setGreen:green];\n          [result setBlue:blue];\n          if (alpha <= 0.9999) {\n            [result setAlpha:floatWrapperWithValue(alpha)];\n          }\n          [result autorelease];\n          return result;\n     }\n     // ...\n\n  Example (JavaScript):\n\n     // ...\n\n     var protoToCssColor = function(rgb_color) {\n        var redFrac = rgb_color.red || 0.0;\n        var greenFrac = rgb_color.green || 0.0;\n        var blueFrac = rgb_color.blue || 0.0;\n        var red = Math.floor(redFrac * 255);\n        var green = Math.floor(greenFrac * 255);\n        var blue = Math.floor(blueFrac * 255);\n\n        if (!('alpha' in rgb_color)) {\n           return rgbToCssColor(red, green, blue);\n        }\n\n        var alphaFrac = rgb_color.alpha.value || 0.0;\n        var rgbParams = [red, green, blue].join(',');\n        return ['rgba(', rgbParams, ',', alphaFrac, ')'].join('');\n     };\n\n     var rgbToCssColor = function(red, green, blue) {\n       var rgbNumber = new Number((red << 16) | (green << 8) | blue);\n       var hexString = rgbNumber.toString(16);\n       var missingZeros = 6 - hexString.length;\n       var resultBuilder = ['#'];\n       for (var i = 0; i < missingZeros; i++) {\n          resultBuilder.push('0');\n       }\n       resultBuilder.push(hexString);\n       return resultBuilder.join('');\n     };\n\n     // ...",
+        "properties": {
+          "alpha": {
+            "description": "The fraction of this color that should be applied to the pixel. That is,\n the final pixel color is defined by the equation:\n\n   `pixel color = alpha * (this color) + (1.0 - alpha) * (background color)`\n\n This means that a value of 1.0 corresponds to a solid color, whereas\n a value of 0.0 corresponds to a completely transparent color. This\n uses a wrapper message rather than a simple float scalar so that it is\n possible to distinguish between a default value and the value being unset.\n If omitted, this color object is rendered as a solid color\n (as if the alpha value had been explicitly given a value of 1.0).",
+            "format": "float",
+            "type": "number"
+          },
+          "blue": {
+            "description": "The amount of blue in the color as a value in the interval [0, 1].",
+            "format": "float",
+            "type": "number"
+          },
+          "green": {
+            "description": "The amount of green in the color as a value in the interval [0, 1].",
+            "format": "float",
+            "type": "number"
+          },
+          "red": {
+            "description": "The amount of red in the color as a value in the interval [0, 1].",
+            "format": "float",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "CreateLinkedIdentityRequest": {
+        "properties": {
+          "code": {
+            "description": "Required. The authorization code from the identity provider.",
+            "type": "string"
+          },
+          "codeVerifier": {
+            "description": "Optional. The PKCE code verifier used in the OAuth flow.",
+            "type": "string"
+          },
+          "idpName": {
+            "description": "Required. The identity provider to link.\n Format: identity-providers/{idp}",
+            "type": "string"
+          },
+          "parent": {
+            "description": "Required. The parent user who owns the linked identity.\n Format: users/{user}",
+            "type": "string"
+          },
+          "redirectUri": {
+            "description": "Required. The redirect URI used in the OAuth flow.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent",
+          "idpName",
+          "code",
+          "redirectUri"
+        ],
+        "type": "object"
+      },
+      "CreatePersonalAccessTokenRequest": {
+        "properties": {
+          "description": {
+            "description": "Optional. Description of the personal access token.",
+            "type": "string"
+          },
+          "expiresInDays": {
+            "description": "Optional. Expiration duration in days (0 = never expires).",
+            "format": "int32",
+            "type": "integer"
+          },
+          "parent": {
+            "description": "Required. The parent resource where this token will be created.\n Format: users/{user}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "parent"
+        ],
+        "type": "object"
+      },
+      "CreatePersonalAccessTokenResponse": {
+        "properties": {
+          "personalAccessToken": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonalAccessToken"
+              }
+            ],
+            "description": "The personal access token metadata."
+          },
+          "token": {
+            "description": "The actual token value - only returned on creation.\n This is the only time the token value will be visible.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FieldMapping": {
+        "properties": {
+          "avatarUrl": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GeneralSetting_CustomProfile": {
+        "description": "Custom profile configuration for instance branding.",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GetCurrentUserResponse": {
+        "properties": {
+          "user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ],
+            "description": "The authenticated user's information."
+          }
+        },
+        "type": "object"
+      },
+      "GetUserWebhookSigningSecretResponse": {
+        "properties": {
+          "signingSecret": {
+            "description": "The signing secret, in the Standard Webhooks \"whsec_<base64>\" form.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GoogleProtobufAny": {
+        "additionalProperties": true,
+        "description": "Contains an arbitrary serialized message along with a @type that describes the type of the serialized message.",
+        "properties": {
+          "@type": {
+            "description": "The type of the serialized message.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "IdentityProvider": {
+        "properties": {
+          "config": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IdentityProviderConfig"
+              }
+            ],
+            "description": "Required. Configuration for the identity provider."
+          },
+          "identifierFilter": {
+            "description": "Optional. Filter applied to user identifiers.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the identity provider.\n Format: identity-providers/{idp}",
+            "type": "string"
+          },
+          "title": {
+            "description": "Required. The display title of the identity provider.",
+            "type": "string"
+          },
+          "type": {
+            "description": "Required. The type of the identity provider.",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "OAUTH2"
+            ],
+            "format": "enum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "config"
+        ],
+        "type": "object"
+      },
+      "IdentityProviderConfig": {
+        "properties": {
+          "oauth2Config": {
+            "$ref": "#/components/schemas/OAuth2Config"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceProfile": {
+        "description": "Instance profile message containing basic instance information.",
+        "properties": {
+          "admin": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ],
+            "description": "The first administrator who set up this instance, for display purposes.\n May be null on an instance that has lost all admins; use needs_setup to\n determine whether initial setup is actually required."
+          },
+          "commit": {
+            "description": "Commit is the current build commit of instance.",
+            "type": "string"
+          },
+          "demo": {
+            "description": "Demo indicates if the instance is in demo mode.",
+            "type": "boolean"
+          },
+          "instanceUrl": {
+            "description": "Instance URL is the URL of the instance.",
+            "type": "string"
+          },
+          "needsSetup": {
+            "description": "NeedsSetup is true when the instance has no users yet and requires initial\n setup (creating the first admin account). Unlike a null admin, this stays\n false once any user exists, so an instance that has lost its admins is not\n mistaken for a fresh install.",
+            "type": "boolean"
+          },
+          "version": {
+            "description": "Version is the current version of instance.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting": {
+        "description": "An instance setting resource.",
+        "properties": {
+          "aiSetting": {
+            "$ref": "#/components/schemas/InstanceSetting_AISetting"
+          },
+          "generalSetting": {
+            "$ref": "#/components/schemas/InstanceSetting_GeneralSetting"
+          },
+          "memoRelatedSetting": {
+            "$ref": "#/components/schemas/InstanceSetting_MemoRelatedSetting"
+          },
+          "name": {
+            "description": "The name of the instance setting.\n Format: instance/settings/{setting}",
+            "type": "string"
+          },
+          "notificationSetting": {
+            "$ref": "#/components/schemas/InstanceSetting_NotificationSetting"
+          },
+          "storageSetting": {
+            "$ref": "#/components/schemas/InstanceSetting_StorageSetting"
+          },
+          "tagsSetting": {
+            "$ref": "#/components/schemas/InstanceSetting_TagsSetting"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_AIProviderConfig": {
+        "description": "AIProviderConfig represents one callable AI provider connection.",
+        "properties": {
+          "apiKey": {
+            "description": "api_key is write-only and is never returned by GetInstanceSetting.",
+            "type": "string",
+            "writeOnly": true
+          },
+          "apiKeyHint": {
+            "description": "api_key_hint is a masked hint for the stored API key.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "apiKeySet": {
+            "description": "api_key_set indicates whether an API key is stored for this provider.",
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "AI_PROVIDER_TYPE_UNSPECIFIED",
+              "OPENAI",
+              "GEMINI"
+            ],
+            "format": "enum",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_AISetting": {
+        "description": "AI provider configuration settings.",
+        "properties": {
+          "providers": {
+            "description": "providers is the list of AI provider configurations available instance-wide.",
+            "items": {
+              "$ref": "#/components/schemas/InstanceSetting_AIProviderConfig"
+            },
+            "type": "array"
+          },
+          "transcription": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InstanceSetting_TranscriptionConfig"
+              }
+            ],
+            "description": "transcription is the speech-to-text feature configuration.\n When unset or transcription.provider_id is empty, transcription is disabled."
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_GeneralSetting": {
+        "description": "General instance settings configuration.",
+        "properties": {
+          "additionalScript": {
+            "description": "additional_script is the additional script.",
+            "type": "string"
+          },
+          "additionalStyle": {
+            "description": "additional_style is the additional style.",
+            "type": "string"
+          },
+          "customProfile": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GeneralSetting_CustomProfile"
+              }
+            ],
+            "description": "custom_profile is the custom profile."
+          },
+          "disallowChangeNickname": {
+            "description": "disallow_change_nickname disallows changing nickname.",
+            "type": "boolean"
+          },
+          "disallowChangeUsername": {
+            "description": "disallow_change_username disallows changing username.",
+            "type": "boolean"
+          },
+          "disallowPasswordAuth": {
+            "description": "disallow_password_auth disallows password authentication.",
+            "type": "boolean"
+          },
+          "disallowUserRegistration": {
+            "description": "disallow_user_registration disallows user registration.",
+            "type": "boolean"
+          },
+          "weekStartDayOffset": {
+            "description": "week_start_day_offset is the week start day offset from Sunday.\n 0: Sunday, 1: Monday, 2: Tuesday, 3: Wednesday, 4: Thursday, 5: Friday, 6: Saturday\n Default is Sunday.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_MemoRelatedSetting": {
+        "description": "Memo-related instance settings and policies.",
+        "properties": {
+          "contentLengthLimit": {
+            "description": "content_length_limit is the limit of content length. Unit is byte.",
+            "format": "int32",
+            "type": "integer"
+          },
+          "enableDoubleClickEdit": {
+            "description": "enable_double_click_edit enables editing on double click.",
+            "type": "boolean"
+          },
+          "reactions": {
+            "description": "reactions is the list of reactions.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_NotificationSetting": {
+        "description": "Notification transport configuration.",
+        "properties": {
+          "email": {
+            "$ref": "#/components/schemas/NotificationSetting_EmailSetting"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_Storage": {
+        "description": "Storage is a configured attachment storage instance.",
+        "properties": {
+          "id": {
+            "description": "id is the stable identifier referenced by attachments.",
+            "type": "string"
+          },
+          "name": {
+            "description": "name is the human-readable storage name.",
+            "type": "string"
+          },
+          "s3Config": {
+            "$ref": "#/components/schemas/Storage_S3Config"
+          },
+          "type": {
+            "enum": [
+              "STORAGE_TYPE_UNSPECIFIED",
+              "DATABASE",
+              "LOCAL",
+              "S3"
+            ],
+            "format": "enum",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_StorageSetting": {
+        "description": "Storage configuration settings for instance attachments.",
+        "properties": {
+          "defaultStorageId": {
+            "description": "Storage used for new attachments.",
+            "type": "string"
+          },
+          "filepathTemplate": {
+            "description": "The template of file path.\n e.g. assets/{timestamp}_{filename}",
+            "type": "string"
+          },
+          "s3Config": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StorageSetting_S3Config"
+              }
+            ],
+            "description": "Legacy compatibility field. New clients use storages."
+          },
+          "storageType": {
+            "description": "Legacy compatibility field. New clients use default_storage_id.",
+            "enum": [
+              "STORAGE_TYPE_UNSPECIFIED",
+              "DATABASE",
+              "LOCAL",
+              "S3"
+            ],
+            "format": "enum",
+            "type": "string"
+          },
+          "storages": {
+            "description": "Configured storage instances, including inactive instances referenced by attachments.",
+            "items": {
+              "$ref": "#/components/schemas/InstanceSetting_Storage"
+            },
+            "type": "array"
+          },
+          "uploadSizeLimitMb": {
+            "description": "The max upload size in megabytes.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_TagMetadata": {
+        "description": "Metadata for a tag.",
+        "properties": {
+          "backgroundColor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Color"
+              }
+            ],
+            "description": "Optional background color for the tag label.\n When unset, the default tag color is used."
+          },
+          "blurContent": {
+            "description": "Whether memos with this tag should have their content blurred.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_TagsSetting": {
+        "description": "Tag metadata configuration.\n Active tag metadata is stored in per-user tag settings.\n This message remains for backward compatibility with existing clients and migrations.",
+        "properties": {
+          "tags": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/InstanceSetting_TagMetadata"
+            },
+            "description": "Map of tag name pattern to tag metadata.\n Each key is treated as an anchored regular expression (^pattern$),\n so a single entry like \"project/.*\" matches all tags under that prefix.\n Exact tag names are also valid (they are trivially valid regex patterns).",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceSetting_TranscriptionConfig": {
+        "description": "TranscriptionConfig configures the speech-to-text feature.",
+        "properties": {
+          "language": {
+            "description": "language is the default ISO 639-1 language hint sent to the provider.\n Empty string lets the provider auto-detect.",
+            "type": "string"
+          },
+          "model": {
+            "description": "model is the provider-specific model identifier.\n Empty string falls back to the engine default\n (whisper-1 for OPENAI providers, gemini-2.5-flash for GEMINI providers).",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "prompt is a default spelling/vocabulary hint passed to the provider.",
+            "type": "string"
+          },
+          "providerId": {
+            "description": "provider_id references an entry in AISetting.providers[].id.\n Empty string means transcription is disabled.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceStats": {
+        "description": "Resource usage statistics for the instance.",
+        "properties": {
+          "database": {
+            "$ref": "#/components/schemas/InstanceStats_DatabaseStats"
+          },
+          "generatedTime": {
+            "description": "Server-side timestamp when the snapshot was generated.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "localStorageBytes": {
+            "description": "Recursive size of the data directory in bytes. -1 if unavailable.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "InstanceStats_DatabaseStats": {
+        "description": "Database size statistics.",
+        "properties": {
+          "driver": {
+            "description": "driver is one of \"sqlite\", \"mysql\", \"postgres\".",
+            "type": "string"
+          },
+          "sizeBytes": {
+            "description": "size_bytes is the database size in bytes; -1 if unavailable.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "LinkMetadata": {
+        "properties": {
+          "description": {
+            "description": "The link description.",
+            "type": "string"
+          },
+          "image": {
+            "description": "The link image URL.",
+            "type": "string"
+          },
+          "title": {
+            "description": "The link title.",
+            "type": "string"
+          },
+          "url": {
+            "description": "The original link URL.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "LinkedIdentity": {
+        "description": "LinkedIdentity represents an SSO identity linked to a user account.",
+        "properties": {
+          "externUid": {
+            "description": "The external user identifier from the identity provider.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "idpName": {
+            "description": "The resource name of the identity provider.\n Format: identity-providers/{idp}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the linked identity.\n Format: users/{user}/linkedIdentities/{linked_identity}",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ListAllUserStatsResponse": {
+        "properties": {
+          "stats": {
+            "description": "The list of user statistics.",
+            "items": {
+              "$ref": "#/components/schemas/UserStats"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListAttachmentsResponse": {
+        "properties": {
+          "attachments": {
+            "description": "The list of attachments.",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "description": "A token that can be sent as `page_token` to retrieve the next page.\n If this field is omitted, there are no subsequent pages.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ListIdentityProvidersResponse": {
+        "properties": {
+          "identityProviders": {
+            "description": "The list of identity providers.",
+            "items": {
+              "$ref": "#/components/schemas/IdentityProvider"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListLinkedIdentitiesResponse": {
+        "properties": {
+          "linkedIdentities": {
+            "description": "The list of linked identities.",
+            "items": {
+              "$ref": "#/components/schemas/LinkedIdentity"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemoAttachmentsResponse": {
+        "properties": {
+          "attachments": {
+            "description": "The list of attachments.",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "description": "A token for the next page of results.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemoCommentsResponse": {
+        "properties": {
+          "memos": {
+            "description": "The list of comment memos.",
+            "items": {
+              "$ref": "#/components/schemas/Memo"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "description": "A token for the next page of results.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemoReactionsResponse": {
+        "properties": {
+          "nextPageToken": {
+            "description": "A token for the next page of results.",
+            "type": "string"
+          },
+          "reactions": {
+            "description": "The list of reactions.",
+            "items": {
+              "$ref": "#/components/schemas/Reaction"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemoRelationsResponse": {
+        "properties": {
+          "nextPageToken": {
+            "description": "A token for the next page of results.",
+            "type": "string"
+          },
+          "relations": {
+            "description": "The list of relations.",
+            "items": {
+              "$ref": "#/components/schemas/MemoRelation"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemoSharesResponse": {
+        "properties": {
+          "memoShares": {
+            "description": "The list of share links.",
+            "items": {
+              "$ref": "#/components/schemas/MemoShare"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemoViewsResponse": {
+        "properties": {
+          "memoViews": {
+            "description": "The list of memo views.",
+            "items": {
+              "$ref": "#/components/schemas/MemoView"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListMemosResponse": {
+        "properties": {
+          "memos": {
+            "description": "The list of memos.",
+            "items": {
+              "$ref": "#/components/schemas/Memo"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "description": "A token that can be sent as `page_token` to retrieve the next page.\n If this field is omitted, there are no subsequent pages.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ListPersonalAccessTokensResponse": {
+        "properties": {
+          "nextPageToken": {
+            "description": "A token for the next page of results.",
+            "type": "string"
+          },
+          "personalAccessTokens": {
+            "description": "The list of personal access tokens.",
+            "items": {
+              "$ref": "#/components/schemas/PersonalAccessToken"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListUserNotificationsResponse": {
+        "properties": {
+          "nextPageToken": {
+            "type": "string"
+          },
+          "notifications": {
+            "items": {
+              "$ref": "#/components/schemas/UserNotification"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListUserSettingsResponse": {
+        "description": "Response message for ListUserSettings method.",
+        "properties": {
+          "nextPageToken": {
+            "description": "A token that can be sent as `page_token` to retrieve the next page.\n If this field is omitted, there are no subsequent pages.",
+            "type": "string"
+          },
+          "settings": {
+            "description": "The list of user settings.",
+            "items": {
+              "$ref": "#/components/schemas/UserSetting"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListUserWebhooksResponse": {
+        "properties": {
+          "webhooks": {
+            "description": "The list of webhooks.",
+            "items": {
+              "$ref": "#/components/schemas/UserWebhook"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ListUsersResponse": {
+        "properties": {
+          "nextPageToken": {
+            "description": "A token that can be sent as `page_token` to retrieve the next page.\n If this field is omitted, there are no subsequent pages.",
+            "type": "string"
+          },
+          "users": {
+            "description": "The list of users.",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Location": {
+        "properties": {
+          "latitude": {
+            "description": "The latitude of the location.",
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "description": "The longitude of the location.",
+            "format": "double",
+            "type": "number"
+          },
+          "placeholder": {
+            "description": "A placeholder text for the location.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MediaCaptureTime": {
+        "properties": {
+          "localDateTime": {
+            "type": "string"
+          },
+          "utcOffset": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MediaLocation": {
+        "properties": {
+          "altitudeMeters": {
+            "format": "double",
+            "type": "number"
+          },
+          "latitude": {
+            "format": "double",
+            "type": "number"
+          },
+          "longitude": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "MediaMetadata": {
+        "properties": {
+          "height": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "photo": {
+            "$ref": "#/components/schemas/PhotoMetadata"
+          },
+          "video": {
+            "$ref": "#/components/schemas/VideoMetadata"
+          },
+          "width": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Memo": {
+        "properties": {
+          "attachments": {
+            "description": "Optional. The attachments of the memo.",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": "array"
+          },
+          "content": {
+            "description": "Required. The content of the memo in Markdown format.",
+            "type": "string"
+          },
+          "createTime": {
+            "description": "The creation timestamp.\n If not set on creation, the server will set it to the current time.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "creator": {
+            "description": "The name of the creator.\n Format: users/{user}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "location": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Location"
+              }
+            ],
+            "description": "Optional. The location of the memo."
+          },
+          "name": {
+            "description": "The resource name of the memo.\n Format: memos/{memo}, where memo is the user-defined UID.",
+            "type": "string"
+          },
+          "parent": {
+            "description": "Output only. The name of the parent memo.\n Format: memos/{memo}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "pinned": {
+            "description": "Whether the memo is pinned.",
+            "type": "boolean"
+          },
+          "property": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Memo_Property"
+              }
+            ],
+            "description": "Output only. The computed properties of the memo.",
+            "readOnly": true
+          },
+          "reactions": {
+            "description": "Output only. The reactions to the memo.",
+            "items": {
+              "$ref": "#/components/schemas/Reaction"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "relations": {
+            "description": "Optional. The relations of the memo.",
+            "items": {
+              "$ref": "#/components/schemas/MemoRelation"
+            },
+            "type": "array"
+          },
+          "snippet": {
+            "description": "Output only. The snippet of the memo content. Plain text only.",
+            "readOnly": true,
+            "type": "string"
+          },
+          "state": {
+            "description": "The state of the memo.",
+            "enum": [
+              "STATE_UNSPECIFIED",
+              "NORMAL",
+              "ARCHIVED"
+            ],
+            "format": "enum",
+            "type": "string"
+          },
+          "tags": {
+            "description": "Output only. The tags extracted from the content.",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "updateTime": {
+            "description": "The last update timestamp.\n If not set on creation, the server will set it to the current time.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "visibility": {
+            "description": "The visibility of the memo.\n One of PRIVATE (creator only), PROTECTED (signed-in users), or\n PUBLIC (anyone). Defaults to PRIVATE on creation when unspecified.",
+            "enum": [
+              "VISIBILITY_UNSPECIFIED",
+              "PRIVATE",
+              "PROTECTED",
+              "PUBLIC"
+            ],
+            "format": "enum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "content",
+          "visibility"
+        ],
+        "type": "object"
+      },
+      "MemoRelation": {
+        "properties": {
+          "memo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemoRelation_Memo"
+              }
+            ],
+            "description": "The memo in the relation."
+          },
+          "relatedMemo": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemoRelation_Memo"
+              }
+            ],
+            "description": "The related memo."
+          },
+          "type": {
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "REFERENCE",
+              "COMMENT"
+            ],
+            "format": "enum",
+            "type": "string"
+          }
+        },
+        "required": [
+          "memo",
+          "relatedMemo",
+          "type"
+        ],
+        "type": "object"
+      },
+      "MemoRelation_Memo": {
+        "description": "Memo reference in relations.",
+        "properties": {
+          "name": {
+            "description": "The resource name of the memo.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "snippet": {
+            "description": "Output only. The snippet of the memo content. Plain text only.",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "MemoShare": {
+        "description": "MemoShare is an access grant that permits read-only access to a memo via an opaque bearer token.",
+        "properties": {
+          "createTime": {
+            "description": "Output only. When this share link was created.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "expireTime": {
+            "description": "Optional. When set, the share link stops working after this time.\n If unset, the link never expires.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the share. Format: memos/{memo}/shares/{share}\n The {share} segment is the opaque token used in the share URL.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MemoView": {
+        "properties": {
+          "filter": {
+            "description": "The CEL filter expression for the memo view, using the same grammar as the\n ListMemos `filter` argument. Reuse it by passing this value to ListMemos.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the memo view.\n Format: users/{user}/views/{view}",
+            "type": "string"
+          },
+          "title": {
+            "description": "The title of the memo view.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "filter"
+        ],
+        "type": "object"
+      },
+      "Memo_Property": {
+        "description": "Computed properties of a memo.",
+        "properties": {
+          "hasCode": {
+            "type": "boolean"
+          },
+          "hasIncompleteTasks": {
+            "type": "boolean"
+          },
+          "hasLink": {
+            "type": "boolean"
+          },
+          "hasTaskList": {
+            "type": "boolean"
+          },
+          "title": {
+            "description": "The title extracted from the first H1 heading, if present.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MotionMedia": {
+        "properties": {
+          "family": {
+            "enum": [
+              "MOTION_MEDIA_FAMILY_UNSPECIFIED",
+              "APPLE_LIVE_PHOTO",
+              "ANDROID_MOTION_PHOTO"
+            ],
+            "format": "enum",
+            "type": "string"
+          },
+          "groupId": {
+            "type": "string"
+          },
+          "hasEmbeddedVideo": {
+            "type": "boolean"
+          },
+          "presentationTimestampUs": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "MOTION_MEDIA_ROLE_UNSPECIFIED",
+              "STILL",
+              "VIDEO",
+              "CONTAINER"
+            ],
+            "format": "enum",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "NotificationSetting_EmailSetting": {
+        "description": "Email delivery configuration for notifications.",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "fromEmail": {
+            "type": "string"
+          },
+          "fromName": {
+            "type": "string"
+          },
+          "replyTo": {
+            "type": "string"
+          },
+          "smtpHost": {
+            "type": "string"
+          },
+          "smtpPassword": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "smtpPort": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "smtpUsername": {
+            "type": "string"
+          },
+          "useSsl": {
+            "type": "boolean"
+          },
+          "useTls": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "OAuth2Config": {
+        "properties": {
+          "authUrl": {
+            "type": "string"
+          },
+          "clientId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          },
+          "fieldMapping": {
+            "$ref": "#/components/schemas/FieldMapping"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tokenUrl": {
+            "type": "string"
+          },
+          "userInfoUrl": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PersonalAccessToken": {
+        "description": "PersonalAccessToken represents a long-lived token for API/script access.\n PATs are distinct from short-lived JWT access tokens used for session authentication.",
+        "properties": {
+          "createdAt": {
+            "description": "Output only. The creation timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "The description of the token.",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "Optional. The expiration timestamp.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastUsedAt": {
+            "description": "Output only. The last used timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the personal access token.\n Format: users/{user}/personalAccessTokens/{personal_access_token}",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PhotoMetadata": {
+        "properties": {
+          "cameraMake": {
+            "type": "string"
+          },
+          "cameraModel": {
+            "type": "string"
+          },
+          "captureTime": {
+            "$ref": "#/components/schemas/MediaCaptureTime"
+          },
+          "exposureTimeSeconds": {
+            "format": "double",
+            "type": "number"
+          },
+          "fNumber": {
+            "format": "double",
+            "type": "number"
+          },
+          "focalLengthMm": {
+            "format": "double",
+            "type": "number"
+          },
+          "iso": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "lensModel": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/MediaLocation"
+          },
+          "sourceExifOrientation": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Reaction": {
+        "properties": {
+          "contentId": {
+            "description": "The resource name of the content.\n For memo reactions, this should be the memo's resource name.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "createTime": {
+            "description": "Output only. The creation timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "creator": {
+            "description": "The resource name of the creator.\n Format: users/{user}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the reaction.\n Format: memos/{memo}/reactions/{reaction}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "reactionType": {
+            "description": "Required. The type of reaction (e.g., \"👍\", \"❤️\", \"😄\").",
+            "type": "string"
+          }
+        },
+        "required": [
+          "contentId",
+          "reactionType"
+        ],
+        "type": "object"
+      },
+      "RefreshTokenRequest": {
+        "properties": {},
+        "type": "object"
+      },
+      "RefreshTokenResponse": {
+        "properties": {
+          "accessToken": {
+            "description": "The new short-lived access token.",
+            "type": "string"
+          },
+          "expiresAt": {
+            "description": "When the access token expires.",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SetMemoAttachmentsRequest": {
+        "properties": {
+          "attachments": {
+            "description": "Required. The attachments to set for the memo.",
+            "items": {
+              "$ref": "#/components/schemas/Attachment"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "Required. The resource name of the memo.\n Format: memos/{memo}",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "attachments"
+        ],
+        "type": "object"
+      },
+      "SetMemoRelationsRequest": {
+        "properties": {
+          "name": {
+            "description": "Required. The resource name of the memo.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "relations": {
+            "description": "Required. The relations to set for the memo.",
+            "items": {
+              "$ref": "#/components/schemas/MemoRelation"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "relations"
+        ],
+        "type": "object"
+      },
+      "SignInRequest": {
+        "properties": {
+          "passwordCredentials": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SignInRequest_PasswordCredentials"
+              }
+            ],
+            "description": "Username and password authentication."
+          },
+          "ssoCredentials": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SignInRequest_SSOCredentials"
+              }
+            ],
+            "description": "SSO provider authentication."
+          }
+        },
+        "type": "object"
+      },
+      "SignInRequest_PasswordCredentials": {
+        "description": "Nested message for password-based authentication credentials.",
+        "properties": {
+          "password": {
+            "description": "The password to sign in with.",
+            "type": "string"
+          },
+          "username": {
+            "description": "The username to sign in with.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "type": "object"
+      },
+      "SignInRequest_SSOCredentials": {
+        "description": "Nested message for SSO authentication credentials.",
+        "properties": {
+          "code": {
+            "description": "The authorization code from the SSO provider.",
+            "type": "string"
+          },
+          "codeVerifier": {
+            "description": "The PKCE code verifier for enhanced security (RFC 7636).\n Optional - enables PKCE flow protection against authorization code interception.",
+            "type": "string"
+          },
+          "idpName": {
+            "description": "The resource name of the SSO provider.\n Format: identity-providers/{idp}",
+            "type": "string"
+          },
+          "redirectUri": {
+            "description": "The redirect URI used in the SSO flow.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "idpName",
+          "code",
+          "redirectUri"
+        ],
+        "type": "object"
+      },
+      "SignInResponse": {
+        "properties": {
+          "accessToken": {
+            "description": "The short-lived access token for API requests.\n Store in memory only, not in localStorage.",
+            "type": "string"
+          },
+          "accessTokenExpiresAt": {
+            "description": "When the access token expires.\n Client should call RefreshToken before this time.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "user": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ],
+            "description": "The authenticated user's information."
+          }
+        },
+        "type": "object"
+      },
+      "Status": {
+        "description": "The `Status` type defines a logical error model that is suitable for different programming environments, including REST APIs and RPC APIs. It is used by [gRPC](https://github.com/grpc). Each `Status` message contains three pieces of data: error code, error message, and error details. You can find out more about this error model and how to work with it in the [API Design Guide](https://cloud.google.com/apis/design/errors).",
+        "properties": {
+          "code": {
+            "description": "The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].",
+            "format": "int32",
+            "type": "integer"
+          },
+          "details": {
+            "description": "A list of messages that carry the error details.  There is a common set of message types for APIs to use.",
+            "items": {
+              "$ref": "#/components/schemas/GoogleProtobufAny"
+            },
+            "type": "array"
+          },
+          "message": {
+            "description": "A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "StorageSetting_S3Config": {
+        "description": "Legacy S3 configuration retained for compatibility with existing clients.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
+        "properties": {
+          "accessKeyId": {
+            "type": "string"
+          },
+          "accessKeySecret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "insecureSkipTlsVerify": {
+            "description": "insecure_skip_tls_verify disables TLS certificate verification when connecting\n to the S3 endpoint. Only enable this for trusted endpoints that use a self-signed\n certificate; it removes protection against man-in-the-middle attacks.",
+            "type": "boolean"
+          },
+          "region": {
+            "type": "string"
+          },
+          "usePathStyle": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Storage_S3Config": {
+        "description": "S3 configuration for an S3-compatible object store.\n Reference: https://developers.cloudflare.com/r2/examples/aws/aws-sdk-go/",
+        "properties": {
+          "accessKeyId": {
+            "type": "string"
+          },
+          "accessKeySecret": {
+            "type": "string",
+            "writeOnly": true
+          },
+          "bucket": {
+            "type": "string"
+          },
+          "endpoint": {
+            "type": "string"
+          },
+          "insecureSkipTlsVerify": {
+            "description": "insecure_skip_tls_verify disables TLS certificate verification when connecting\n to the S3 endpoint. Only enable this for trusted endpoints that use a self-signed\n certificate; it removes protection against man-in-the-middle attacks.",
+            "type": "boolean"
+          },
+          "region": {
+            "type": "string"
+          },
+          "usePathStyle": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "TestInstanceEmailSettingRequest": {
+        "description": "Request message for TestInstanceEmailSetting method.",
+        "properties": {
+          "email": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/NotificationSetting_EmailSetting"
+              }
+            ],
+            "description": "Optional. SMTP email settings to test. If omitted, the stored notification email setting is used."
+          },
+          "recipientEmail": {
+            "description": "Optional. Recipient email address. If omitted, the current user's email address is used.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "TranscribeRequest": {
+        "properties": {
+          "audio": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TranscriptionAudio"
+              }
+            ],
+            "description": "Required. Audio input."
+          }
+        },
+        "required": [
+          "audio"
+        ],
+        "type": "object"
+      },
+      "TranscribeResponse": {
+        "properties": {
+          "text": {
+            "description": "The transcribed text.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "TranscriptionAudio": {
+        "properties": {
+          "content": {
+            "description": "Inline audio bytes.",
+            "format": "bytes",
+            "type": "string",
+            "writeOnly": true
+          },
+          "contentType": {
+            "description": "Optional. The MIME type of the input audio.",
+            "type": "string"
+          },
+          "filename": {
+            "description": "Optional. The uploaded filename.",
+            "type": "string"
+          },
+          "uri": {
+            "description": "URI for audio content. Reserved for future use.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UpsertMemoReactionRequest": {
+        "properties": {
+          "name": {
+            "description": "Required. The resource name of the memo.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "reaction": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Reaction"
+              }
+            ],
+            "description": "Required. The reaction to upsert."
+          }
+        },
+        "required": [
+          "name",
+          "reaction"
+        ],
+        "type": "object"
+      },
+      "User": {
+        "properties": {
+          "avatarUrl": {
+            "description": "Optional. The avatar URL of the user.",
+            "type": "string"
+          },
+          "createTime": {
+            "description": "Output only. The creation timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "description": "Optional. The description of the user.",
+            "type": "string"
+          },
+          "displayName": {
+            "description": "Optional. The display name of the user.",
+            "type": "string"
+          },
+          "email": {
+            "description": "Optional. The email address of the user.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The resource name of the user.\n Format: users/{user}",
+            "type": "string"
+          },
+          "password": {
+            "description": "Input only. The password for the user.",
+            "type": "string",
+            "writeOnly": true
+          },
+          "role": {
+            "description": "The role of the user.",
+            "enum": [
+              "ROLE_UNSPECIFIED",
+              "ADMIN",
+              "USER"
+            ],
+            "format": "enum",
+            "type": "string"
+          },
+          "state": {
+            "description": "The state of the user.",
+            "enum": [
+              "STATE_UNSPECIFIED",
+              "NORMAL",
+              "ARCHIVED"
+            ],
+            "format": "enum",
+            "type": "string"
+          },
+          "updateTime": {
+            "description": "Output only. The last update timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "username": {
+            "description": "Required. The unique username for login.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "username",
+          "state"
+        ],
+        "type": "object"
+      },
+      "UserNotification": {
+        "properties": {
+          "createTime": {
+            "description": "The creation timestamp.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "memoComment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserNotification_MemoCommentPayload"
+              }
+            ],
+            "readOnly": true
+          },
+          "memoMention": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserNotification_MemoMentionPayload"
+              }
+            ],
+            "readOnly": true
+          },
+          "name": {
+            "description": "The resource name of the notification.\n Format: users/{user}/notifications/{notification}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "sender": {
+            "description": "The sender of the notification.\n Format: users/{user}",
+            "readOnly": true,
+            "type": "string"
+          },
+          "senderUser": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/User"
+              }
+            ],
+            "description": "The sender user details.",
+            "readOnly": true
+          },
+          "status": {
+            "description": "The status of the notification.",
+            "enum": [
+              "STATUS_UNSPECIFIED",
+              "UNREAD",
+              "ARCHIVED"
+            ],
+            "format": "enum",
+            "type": "string"
+          },
+          "type": {
+            "description": "The type of the notification.",
+            "enum": [
+              "TYPE_UNSPECIFIED",
+              "MEMO_COMMENT",
+              "MEMO_MENTION"
+            ],
+            "format": "enum",
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UserNotification_MemoCommentPayload": {
+        "properties": {
+          "memo": {
+            "description": "The memo name of comment.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "memoSnippet": {
+            "description": "Preview text of the comment memo.",
+            "type": "string"
+          },
+          "relatedMemo": {
+            "description": "The name of related memo.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "relatedMemoSnippet": {
+            "description": "Preview text of the related memo.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UserNotification_MemoMentionPayload": {
+        "properties": {
+          "memo": {
+            "description": "The memo that contains the mention.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "memoSnippet": {
+            "description": "Preview text of the memo that contains the mention.",
+            "type": "string"
+          },
+          "relatedMemo": {
+            "description": "The related parent memo when the mention was created in a comment.\n Format: memos/{memo}",
+            "type": "string"
+          },
+          "relatedMemoSnippet": {
+            "description": "Preview text of the related parent memo.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UserSetting": {
+        "description": "User settings message",
+        "properties": {
+          "generalSetting": {
+            "$ref": "#/components/schemas/UserSetting_GeneralSetting"
+          },
+          "name": {
+            "description": "The name of the user setting.\n Format: users/{user}/settings/{setting}, {setting} is the key for the setting.\n For example, \"users/steven/settings/GENERAL\" for general settings.",
+            "type": "string"
+          },
+          "tagsSetting": {
+            "$ref": "#/components/schemas/UserSetting_TagsSetting"
+          },
+          "webhooksSetting": {
+            "$ref": "#/components/schemas/UserSetting_WebhooksSetting"
+          }
+        },
+        "type": "object"
+      },
+      "UserSetting_GeneralSetting": {
+        "description": "General user settings configuration.",
+        "properties": {
+          "locale": {
+            "description": "The preferred locale of the user.",
+            "type": "string"
+          },
+          "memoVisibility": {
+            "description": "The default visibility of the memo.",
+            "type": "string"
+          },
+          "saveMediaMetadata": {
+            "description": "Whether the official client should save metadata from future media uploads.",
+            "type": "boolean"
+          },
+          "theme": {
+            "description": "The preferred theme of the user.\n This references a CSS file in the web/public/themes/ directory.\n If not set, the default theme will be used.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "UserSetting_TagMetadata": {
+        "description": "Tag metadata for user-specific display rules.",
+        "properties": {
+          "backgroundColor": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Color"
+              }
+            ],
+            "description": "Optional background color for the tag label.\n When unset, the default tag color is used."
+          },
+          "blurContent": {
+            "description": "Whether memos with this tag should have their content blurred.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "UserSetting_TagsSetting": {
+        "description": "User-specific tag metadata.",
+        "properties": {
+          "tags": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/UserSetting_TagMetadata"
+            },
+            "description": "Map of tag name pattern to tag metadata.\n Each key is treated as an anchored regular expression (^pattern$).",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "UserSetting_WebhooksSetting": {
+        "description": "User webhooks configuration.",
+        "properties": {
+          "webhooks": {
+            "description": "List of user webhooks.",
+            "items": {
+              "$ref": "#/components/schemas/UserWebhook"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "UserStats": {
+        "description": "User statistics messages",
+        "properties": {
+          "memoCreatedTimestamps": {
+            "description": "The creation timestamps of the user's memos.",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "memoTypeStats": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UserStats_MemoTypeStats"
+              }
+            ],
+            "description": "The stats of memo types."
+          },
+          "memoUpdatedTimestamps": {
+            "description": "The latest update timestamps of the user's memos (one per memo,\n mirrors memo_created_timestamps). Used by the activity heatmap when\n the client's view is set to update_time basis.",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "name": {
+            "description": "The resource name of the user statistics singleton.\n Format: users/{user}/stats",
+            "type": "string"
+          },
+          "pinnedMemos": {
+            "description": "The pinned memos of the user.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tagCount": {
+            "additionalProperties": {
+              "format": "int32",
+              "type": "integer"
+            },
+            "description": "The count of tags.",
+            "type": "object"
+          },
+          "totalMemoCount": {
+            "description": "Total memo count.",
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UserStats_MemoTypeStats": {
+        "description": "Memo type statistics.",
+        "properties": {
+          "codeCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "linkCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "todoCount": {
+            "format": "int32",
+            "type": "integer"
+          },
+          "undoCount": {
+            "format": "int32",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "UserWebhook": {
+        "description": "UserWebhook represents a webhook owned by a user.",
+        "properties": {
+          "createTime": {
+            "description": "The creation time of the webhook.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "displayName": {
+            "description": "Optional. Human-readable name for the webhook.",
+            "type": "string"
+          },
+          "name": {
+            "description": "The name of the webhook.\n Format: users/{user}/webhooks/{webhook}",
+            "type": "string"
+          },
+          "signingSecret": {
+            "description": "Optional. Signing secret used to HMAC-SHA256 sign the webhook request body.\n This field is input-only; it is never returned in responses.",
+            "type": "string",
+            "writeOnly": true
+          },
+          "signingSecretSet": {
+            "description": "Whether a signing secret is configured for this webhook.",
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "updateTime": {
+            "description": "The last update time of the webhook.",
+            "format": "date-time",
+            "readOnly": true,
+            "type": "string"
+          },
+          "url": {
+            "description": "The URL to send the webhook to.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "VideoMetadata": {
+        "properties": {
+          "durationSeconds": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "",
+    "version": "0.0.1"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/api/v1/ai:transcribe": {
+      "post": {
+        "description": "Transcribe transcribes an audio file using an instance AI provider.",
+        "operationId": "AIService_Transcribe",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TranscribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TranscribeResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AIService"
+        ]
+      }
+    },
+    "/api/v1/attachments": {
+      "get": {
+        "description": "ListAttachments lists all attachments.",
+        "operationId": "AttachmentService_ListAttachments",
+        "parameters": [
+          {
+            "description": "Optional. The maximum number of attachments to return.\n The service may return fewer than this value.\n If unspecified, at most 50 attachments will be returned.\n The maximum value is 1000; values above 1000 will be coerced to 1000.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token, received from a previous `ListAttachments` call.\n Provide this to retrieve the subsequent page.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Filter to apply to the list results.\n Example: \"mime_type==\\\"image/png\\\"\" or \"filename.contains(\\\"test\\\")\"\n Supported operators: =, !=, <, <=, >, >=, : (contains), in\n Supported fields: filename, mime_type, create_time, memo",
+            "in": "query",
+            "name": "filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The order to sort results by.\n Example: \"create_time desc\" or \"filename asc\"",
+            "in": "query",
+            "name": "orderBy",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAttachmentsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AttachmentService"
+        ]
+      },
+      "post": {
+        "description": "CreateAttachment creates a new attachment.",
+        "operationId": "AttachmentService_CreateAttachment",
+        "parameters": [
+          {
+            "description": "Optional. The attachment ID to use for this attachment.\n If empty, a unique ID will be generated.\n Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$",
+            "in": "query",
+            "name": "attachmentId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Attachment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AttachmentService"
+        ]
+      }
+    },
+    "/api/v1/attachments/{attachment}": {
+      "delete": {
+        "description": "DeleteAttachment deletes an attachment by name.",
+        "operationId": "AttachmentService_DeleteAttachment",
+        "parameters": [
+          {
+            "description": "The attachment id.",
+            "in": "path",
+            "name": "attachment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AttachmentService"
+        ]
+      },
+      "get": {
+        "description": "GetAttachment returns an attachment by name.",
+        "operationId": "AttachmentService_GetAttachment",
+        "parameters": [
+          {
+            "description": "The attachment id.",
+            "in": "path",
+            "name": "attachment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AttachmentService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateAttachment updates an attachment.",
+        "operationId": "AttachmentService_UpdateAttachment",
+        "parameters": [
+          {
+            "description": "The attachment id.",
+            "in": "path",
+            "name": "attachment",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Attachment"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Attachment"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AttachmentService"
+        ]
+      }
+    },
+    "/api/v1/attachments:batchDelete": {
+      "post": {
+        "description": "BatchDeleteAttachments deletes multiple attachments in one request.",
+        "operationId": "AttachmentService_BatchDeleteAttachments",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchDeleteAttachmentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AttachmentService"
+        ]
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "description": "GetCurrentUser returns the authenticated user's information.\n Validates the access token and returns user details.\n Similar to OIDC's /userinfo endpoint.",
+        "operationId": "AuthService_GetCurrentUser",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetCurrentUserResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "description": "RefreshToken exchanges a valid refresh token for a new access token.\n The refresh token is read from the HttpOnly cookie.\n Returns a new short-lived access token.",
+        "operationId": "AuthService_RefreshToken",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshTokenResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/api/v1/auth/signin": {
+      "post": {
+        "description": "SignIn authenticates a user with credentials and returns tokens.\n On success, returns an access token and sets a refresh token cookie.\n Supports password-based and SSO authentication methods.",
+        "operationId": "AuthService_SignIn",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignInRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignInResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/api/v1/auth/signout": {
+      "post": {
+        "description": "SignOut terminates the user's authentication.\n Revokes the refresh token and clears the authentication cookie.",
+        "operationId": "AuthService_SignOut",
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/api/v1/identity-providers": {
+      "get": {
+        "description": "ListIdentityProviders lists identity providers.",
+        "operationId": "IdentityProviderService_ListIdentityProviders",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListIdentityProvidersResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "IdentityProviderService"
+        ]
+      },
+      "post": {
+        "description": "CreateIdentityProvider creates an identity provider.",
+        "operationId": "IdentityProviderService_CreateIdentityProvider",
+        "parameters": [
+          {
+            "description": "Optional. The ID to use for the identity provider, which will become the final component of the resource name.\n If not provided, the system will generate one.\n Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$",
+            "in": "query",
+            "name": "identityProviderId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityProvider"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "IdentityProviderService"
+        ]
+      }
+    },
+    "/api/v1/identity-providers/{identity-provider}": {
+      "delete": {
+        "description": "DeleteIdentityProvider deletes an identity provider.",
+        "operationId": "IdentityProviderService_DeleteIdentityProvider",
+        "parameters": [
+          {
+            "description": "The identity-provider id.",
+            "in": "path",
+            "name": "identity-provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "IdentityProviderService"
+        ]
+      },
+      "get": {
+        "description": "GetIdentityProvider gets an identity provider.",
+        "operationId": "IdentityProviderService_GetIdentityProvider",
+        "parameters": [
+          {
+            "description": "The identity-provider id.",
+            "in": "path",
+            "name": "identity-provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "IdentityProviderService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateIdentityProvider updates an identity provider.",
+        "operationId": "IdentityProviderService_UpdateIdentityProvider",
+        "parameters": [
+          {
+            "description": "The identity-provider id.",
+            "in": "path",
+            "name": "identity-provider",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The update mask applies to the resource. Only the top level fields of\n IdentityProvider are supported.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityProvider"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentityProvider"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "IdentityProviderService"
+        ]
+      }
+    },
+    "/api/v1/instance/profile": {
+      "get": {
+        "description": "Gets the instance profile.",
+        "operationId": "InstanceService_GetInstanceProfile",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceProfile"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
+    "/api/v1/instance/settings/notification:testEmail": {
+      "post": {
+        "description": "Tests notification email delivery with the provided or stored SMTP settings.",
+        "operationId": "InstanceService_TestInstanceEmailSetting",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestInstanceEmailSettingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
+    "/api/v1/instance/settings:batchGet": {
+      "post": {
+        "description": "Batch gets instance settings.",
+        "operationId": "InstanceService_BatchGetInstanceSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGetInstanceSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchGetInstanceSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
+    "/api/v1/instance/stats": {
+      "get": {
+        "description": "GetInstanceStats returns resource usage statistics for the instance. Admin only.",
+        "operationId": "InstanceService_GetInstanceStats",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceStats"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
+    "/api/v1/instance/{instance}/*": {
+      "get": {
+        "description": "Gets an instance setting.",
+        "operationId": "InstanceService_GetInstanceSetting",
+        "parameters": [
+          {
+            "description": "The instance id.",
+            "in": "path",
+            "name": "instance",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceSetting"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      },
+      "patch": {
+        "description": "Updates an instance setting.",
+        "operationId": "InstanceService_UpdateInstanceSetting",
+        "parameters": [
+          {
+            "description": "The instance id.",
+            "in": "path",
+            "name": "instance",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstanceSetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceSetting"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "InstanceService"
+        ]
+      }
+    },
+    "/api/v1/memos": {
+      "get": {
+        "description": "ListMemos lists memos with pagination and filter.",
+        "operationId": "MemoService_ListMemos",
+        "parameters": [
+          {
+            "description": "Optional. The maximum number of memos to return.\n The service may return fewer than this value.\n If unspecified, at most 50 memos will be returned.\n The maximum value is 1000; values above 1000 will be coerced to 1000.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token, received from a previous `ListMemos` call.\n Provide this to retrieve the subsequent page.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The state of the memos to list.\n Default to `NORMAL`. Set to `ARCHIVED` to list archived memos.",
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "enum": [
+                "STATE_UNSPECIFIED",
+                "NORMAL",
+                "ARCHIVED"
+              ],
+              "format": "enum",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The order to sort results by.\n Default to \"create_time desc\".\n Supports comma-separated list of fields following AIP-132.\n Example: \"pinned desc, create_time desc\" or \"update_time asc\"\n Supported fields: pinned, create_time, update_time, name.\n Note: order_by uses create_time / update_time, while the filter\n expression uses created_ts / updated_ts for the same timestamps.",
+            "in": "query",
+            "name": "orderBy",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. A CEL expression to filter memos. Combine terms with && and ||.\n Available fields:\n   content (string), creator (string, e.g. \"users/1\"),\n   created_ts / updated_ts (timestamp), pinned (bool),\n   visibility (string: PRIVATE | PROTECTED | PUBLIC),\n   tags (list<string>; match with `\"work\" in tags`, not `tag == \"work\"`),\n   has_task_list / has_link / has_code / has_incomplete_tasks (bool),\n   has_location (bool; true when the memo has a location attached).\n Note: the time fields here are created_ts / updated_ts, which differ from\n the create_time / update_time names used by order_by.\n Examples:\n   pinned == true && visibility == \"PUBLIC\"\n   tags.exists(t, t == \"urgent\")\n   content.contains(\"roadmap\") && created_ts > now - duration(\"168h\")",
+            "in": "query",
+            "name": "filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If true, show deleted memos in the response.",
+            "in": "query",
+            "name": "showDeleted",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemosResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "post": {
+        "description": "CreateMemo creates a memo. The request body is a Memo; set its content\n (Markdown) and visibility (PRIVATE | PROTECTED | PUBLIC, default PRIVATE).\n The memo is owned by the authenticated user; requires authentication.",
+        "operationId": "MemoService_CreateMemo",
+        "parameters": [
+          {
+            "description": "Optional. The memo ID to use for this memo.\n If empty, a unique ID will be generated.\n Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$",
+            "in": "query",
+            "name": "memoId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Memo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/-/linkMetadata": {
+      "get": {
+        "description": "GetLinkMetadata gets metadata for a link.",
+        "operationId": "MemoService_GetLinkMetadata",
+        "parameters": [
+          {
+            "description": "Required. The link URL.",
+            "in": "query",
+            "name": "url",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkMetadata"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/-/linkMetadata:batchGet": {
+      "post": {
+        "description": "BatchGetLinkMetadata gets metadata for links.",
+        "operationId": "MemoService_BatchGetLinkMetadata",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGetLinkMetadataRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchGetLinkMetadataResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}": {
+      "delete": {
+        "description": "DeleteMemo deletes a memo.",
+        "operationId": "MemoService_DeleteMemo",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If set to true, the memo will be deleted even if it has associated data.",
+            "in": "query",
+            "name": "force",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "get": {
+        "description": "GetMemo gets a memo.",
+        "operationId": "MemoService_GetMemo",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateMemo updates a memo.",
+        "operationId": "MemoService_UpdateMemo",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Memo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/attachments": {
+      "get": {
+        "description": "ListMemoAttachments lists attachments for a memo.",
+        "operationId": "MemoService_ListMemoAttachments",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The maximum number of attachments to return.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token for pagination.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoAttachmentsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "patch": {
+        "description": "SetMemoAttachments replaces the full set of attachments on a memo with the\n provided list (not an append). Pass the complete desired set; an empty list\n clears all attachments. Idempotent.",
+        "operationId": "MemoService_SetMemoAttachments",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMemoAttachmentsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/comments": {
+      "get": {
+        "description": "ListMemoComments lists comments for a memo.",
+        "operationId": "MemoService_ListMemoComments",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The maximum number of comments to return.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token for pagination.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The order to sort results by.",
+            "in": "query",
+            "name": "orderBy",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoCommentsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "post": {
+        "description": "CreateMemoComment creates a comment for a memo.",
+        "operationId": "MemoService_CreateMemoComment",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The comment ID to use.",
+            "in": "query",
+            "name": "commentId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Memo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/reactions": {
+      "get": {
+        "description": "ListMemoReactions lists reactions for a memo.",
+        "operationId": "MemoService_ListMemoReactions",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The maximum number of reactions to return.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token for pagination.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoReactionsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "post": {
+        "description": "UpsertMemoReaction adds or updates the authenticated user's reaction on a\n memo. The reaction's content_id is the memo's resource name (memos/{memo}).",
+        "operationId": "MemoService_UpsertMemoReaction",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertMemoReactionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reaction"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/reactions/{reaction}": {
+      "delete": {
+        "description": "DeleteMemoReaction deletes a reaction for a memo.",
+        "operationId": "MemoService_DeleteMemoReaction",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The reaction id.",
+            "in": "path",
+            "name": "reaction",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/relations": {
+      "get": {
+        "description": "ListMemoRelations lists relations for a memo.",
+        "operationId": "MemoService_ListMemoRelations",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The maximum number of relations to return.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token for pagination.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoRelationsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "patch": {
+        "description": "SetMemoRelations replaces the full set of relations on a memo with the\n provided list (not an append). Pass the complete desired set; an empty list\n clears all relations. Idempotent.",
+        "operationId": "MemoService_SetMemoRelations",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetMemoRelationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/shares": {
+      "get": {
+        "description": "ListMemoShares lists all share links for a memo. Requires authentication as the memo creator.",
+        "operationId": "MemoService_ListMemoShares",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoSharesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      },
+      "post": {
+        "description": "CreateMemoShare creates a share link for a memo. Requires authentication as the memo creator.",
+        "operationId": "MemoService_CreateMemoShare",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoShare"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoShare"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/memos/{memo}/shares/{share}": {
+      "delete": {
+        "description": "DeleteMemoShare revokes a share link. Requires authentication as the memo creator.",
+        "operationId": "MemoService_DeleteMemoShare",
+        "parameters": [
+          {
+            "description": "The memo id.",
+            "in": "path",
+            "name": "memo",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The share id.",
+            "in": "path",
+            "name": "share",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/shares/{shareToken}/memo": {
+      "get": {
+        "description": "GetSharedMemo resolves a share token to its memo. No authentication required.\n Returns NOT_FOUND if the token is invalid or expired.",
+        "operationId": "MemoService_GetSharedMemo",
+        "parameters": [
+          {
+            "description": "Required. The opaque bearer token extracted from the share URL.",
+            "in": "path",
+            "name": "shareToken",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Memo"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoService"
+        ]
+      }
+    },
+    "/api/v1/users": {
+      "get": {
+        "description": "ListUsers returns a list of users.",
+        "operationId": "UserService_ListUsers",
+        "parameters": [
+          {
+            "description": "Optional. The maximum number of users to return.\n The service may return fewer than this value.\n If unspecified, at most 50 users will be returned.\n The maximum value is 1000; values above 1000 will be coerced to 1000.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token, received from a previous `ListUsers` call.\n Provide this to retrieve the subsequent page.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Filter to apply to the list results.\n Example: \"username == 'steven'\"\n Supported operators: ==\n Supported fields: username",
+            "in": "query",
+            "name": "filter",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If true, show deleted users in the response.",
+            "in": "query",
+            "name": "showDeleted",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUsersResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "post": {
+        "description": "CreateUser creates a new user.",
+        "operationId": "UserService_CreateUser",
+        "parameters": [
+          {
+            "description": "Optional. The resource ID to use for this user. If set, it must equal\n user.username and follow the username format.\n Format: ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,34}[a-zA-Z0-9])?$",
+            "in": "query",
+            "name": "userId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If set, validate the request but don't actually create the user.",
+            "in": "query",
+            "name": "validateOnly",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Optional. An idempotency token that can be used to ensure that multiple\n requests to create a user have the same result.",
+            "in": "query",
+            "name": "requestId",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/User"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}": {
+      "delete": {
+        "description": "DeleteUser deletes a user.",
+        "operationId": "UserService_DeleteUser",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If set to true, the user will be deleted even if they have associated data.",
+            "in": "query",
+            "name": "force",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "get": {
+        "description": "GetUser gets a user by username.\n Format: users/{user} (e.g., users/steven)",
+        "operationId": "UserService_GetUser",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The fields to return in the response.\n If not specified, all fields are returned.",
+            "in": "query",
+            "name": "readMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateUser updates a user.",
+        "operationId": "UserService_UpdateUser",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If set to true, allows updating sensitive fields.",
+            "in": "query",
+            "name": "allowMissing",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/User"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/linkedIdentities": {
+      "get": {
+        "description": "ListLinkedIdentities returns a list of linked SSO identities for a user.",
+        "operationId": "UserService_ListLinkedIdentities",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListLinkedIdentitiesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "post": {
+        "description": "CreateLinkedIdentity links an SSO identity to the authenticated user.",
+        "operationId": "UserService_CreateLinkedIdentity",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateLinkedIdentityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedIdentity"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/linkedIdentities/{linkedIdentity}": {
+      "delete": {
+        "description": "DeleteLinkedIdentity unlinks an SSO identity from a user.",
+        "operationId": "UserService_DeleteLinkedIdentity",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The linkedIdentity id.",
+            "in": "path",
+            "name": "linkedIdentity",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "get": {
+        "description": "GetLinkedIdentity gets a linked SSO identity for a user.",
+        "operationId": "UserService_GetLinkedIdentity",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The linkedIdentity id.",
+            "in": "path",
+            "name": "linkedIdentity",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkedIdentity"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/notifications": {
+      "get": {
+        "description": "ListUserNotifications lists notifications for a user.",
+        "operationId": "UserService_ListUserNotifications",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "filter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUserNotificationsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/notifications/{notification}": {
+      "delete": {
+        "description": "DeleteUserNotification deletes a notification.",
+        "operationId": "UserService_DeleteUserNotification",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The notification id.",
+            "in": "path",
+            "name": "notification",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateUserNotification updates a notification.",
+        "operationId": "UserService_UpdateUserNotification",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The notification id.",
+            "in": "path",
+            "name": "notification",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserNotification"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserNotification"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/personalAccessTokens": {
+      "get": {
+        "description": "ListPersonalAccessTokens returns a list of Personal Access Tokens (PATs) for a user.\n PATs are long-lived tokens for API/script access, distinct from short-lived JWT access tokens.",
+        "operationId": "UserService_ListPersonalAccessTokens",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The maximum number of tokens to return.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token for pagination.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPersonalAccessTokensResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "post": {
+        "description": "CreatePersonalAccessToken creates a new Personal Access Token for a user.\n The token value is only returned once upon creation.",
+        "operationId": "UserService_CreatePersonalAccessToken",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePersonalAccessTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatePersonalAccessTokenResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/personalAccessTokens/{personalAccessToken}": {
+      "delete": {
+        "description": "DeletePersonalAccessToken deletes a Personal Access Token.",
+        "operationId": "UserService_DeletePersonalAccessToken",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The personalAccessToken id.",
+            "in": "path",
+            "name": "personalAccessToken",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/settings": {
+      "get": {
+        "description": "ListUserSettings returns a list of user settings.",
+        "operationId": "UserService_ListUserSettings",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The maximum number of settings to return.\n The service may return fewer than this value.\n If unspecified, at most 50 settings will be returned.\n The maximum value is 1000; values above 1000 will be coerced to 1000.",
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "format": "int32",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Optional. A page token, received from a previous `ListUserSettings` call.\n Provide this to retrieve the subsequent page.",
+            "in": "query",
+            "name": "pageToken",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUserSettingsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/settings/{setting}": {
+      "get": {
+        "description": "GetUserSetting returns the user setting.",
+        "operationId": "UserService_GetUserSetting",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The setting id.",
+            "in": "path",
+            "name": "setting",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSetting"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateUserSetting updates the user setting.",
+        "operationId": "UserService_UpdateUserSetting",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The setting id.",
+            "in": "path",
+            "name": "setting",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserSetting"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSetting"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/views": {
+      "get": {
+        "description": "ListMemoViews returns a user's memo views. Each view is a named, reusable\n CEL filter (see MemoView.filter); pass its filter string directly to the\n ListMemos `filter` argument.",
+        "operationId": "MemoViewService_ListMemoViews",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoViewsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoViewService"
+        ]
+      },
+      "post": {
+        "description": "CreateMemoView creates a new memo view for a user.",
+        "operationId": "MemoViewService_CreateMemoView",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. If set, validate the request, but do not actually create the memo view.",
+            "in": "query",
+            "name": "validateOnly",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoView"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoViewService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/views/{view}": {
+      "delete": {
+        "description": "DeleteMemoView deletes a memo view for a user.",
+        "operationId": "MemoViewService_DeleteMemoView",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The view id.",
+            "in": "path",
+            "name": "view",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoViewService"
+        ]
+      },
+      "get": {
+        "description": "GetMemoView gets a memo view by name.",
+        "operationId": "MemoViewService_GetMemoView",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The view id.",
+            "in": "path",
+            "name": "view",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoView"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoViewService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateMemoView updates a memo view for a user.",
+        "operationId": "MemoViewService_UpdateMemoView",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The view id.",
+            "in": "path",
+            "name": "view",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoView"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoView"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "MemoViewService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/webhooks": {
+      "get": {
+        "description": "ListUserWebhooks returns a list of webhooks for a user.",
+        "operationId": "UserService_ListUserWebhooks",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListUserWebhooksResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "post": {
+        "description": "CreateUserWebhook creates a new webhook for a user.",
+        "operationId": "UserService_CreateUserWebhook",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserWebhook"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWebhook"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/webhooks/{webhook}": {
+      "delete": {
+        "description": "DeleteUserWebhook deletes a webhook for a user.",
+        "operationId": "UserService_DeleteUserWebhook",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The webhook id.",
+            "in": "path",
+            "name": "webhook",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {},
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      },
+      "patch": {
+        "description": "UpdateUserWebhook updates an existing webhook for a user.",
+        "operationId": "UserService_UpdateUserWebhook",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The webhook id.",
+            "in": "path",
+            "name": "webhook",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The list of fields to update.",
+            "in": "query",
+            "name": "updateMask",
+            "schema": {
+              "format": "field-mask",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserWebhook"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserWebhook"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}/webhooks/{webhook}:getSigningSecret": {
+      "get": {
+        "description": "GetUserWebhookSigningSecret returns the signing secret for a webhook.\n The secret is returned only through this explicit, owner-gated call; it is\n never included in List/Create/Update responses.",
+        "operationId": "UserService_GetUserWebhookSigningSecret",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The webhook id.",
+            "in": "path",
+            "name": "webhook",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetUserWebhookSigningSecretResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users/{user}:getStats": {
+      "get": {
+        "description": "GetUserStats returns statistics for a specific user.",
+        "operationId": "UserService_GetUserStats",
+        "parameters": [
+          {
+            "description": "The user id.",
+            "in": "path",
+            "name": "user",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStats"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users:batchGet": {
+      "post": {
+        "description": "BatchGetUsers returns active users by usernames.",
+        "operationId": "UserService_BatchGetUsers",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchGetUsersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchGetUsersResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    },
+    "/api/v1/users:stats": {
+      "get": {
+        "description": "ListAllUserStats returns statistics for all users.",
+        "operationId": "UserService_ListAllUserStats",
+        "parameters": [
+          {
+            "description": "Optional. The state of memos to include. Defaults to NORMAL.",
+            "in": "query",
+            "name": "state",
+            "schema": {
+              "enum": [
+                "STATE_UNSPECIFIED",
+                "NORMAL",
+                "ARCHIVED"
+              ],
+              "format": "enum",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Filter to apply to memo stats.\n Uses the same filter syntax as ListMemos.",
+            "in": "query",
+            "name": "filter",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListAllUserStatsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "UserService"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "AIService"
+    },
+    {
+      "name": "AttachmentService"
+    },
+    {
+      "name": "AuthService"
+    },
+    {
+      "name": "IdentityProviderService"
+    },
+    {
+      "name": "InstanceService"
+    },
+    {
+      "name": "MemoService"
+    },
+    {
+      "name": "MemoViewService"
+    },
+    {
+      "name": "UserService"
+    }
+  ]
+}

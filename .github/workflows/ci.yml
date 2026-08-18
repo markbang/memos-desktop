@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Check shell syntax
+        run: bash -n scripts/*.sh
+
+  platform:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: scripts/install-linux-deps.sh
+      - name: Check workspace
+        run: cargo check --workspace --locked
+      - name: Run tests
+        run: cargo test --workspace --all-targets --locked
+      - name: Build release binary
+        run: cargo build --release --locked -p memos-desktop
+
+  dependency-policy:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Check advisories, licenses, bans, and sources
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: clippy
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        run: scripts/install-linux-deps.sh
+      - name: Lint application code
+        run: cargo clippy --locked -p memos-desktop --all-targets --no-deps -- -D warnings

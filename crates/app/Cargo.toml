@@ -1,0 +1,29 @@
+[package]
+name = "memos-desktop"
+description = "A native Memos desktop client built with Rust, GPUI, and GPUI Component."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme = "../../README.md"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+chrono.workspace = true
+directories.workspace = true
+gpui.workspace = true
+gpui-component.workspace = true
+gpui-component-assets.workspace = true
+memos-api = { path = "../memos-api" }
+mime_guess.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["cookies", "json", "rustls"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+url.workspace = true

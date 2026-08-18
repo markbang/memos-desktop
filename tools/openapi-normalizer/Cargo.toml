@@ -1,0 +1,12 @@
+[package]
+name = "openapi-normalizer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"

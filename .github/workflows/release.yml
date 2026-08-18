@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: memos-desktop-linux-x86_64.tar.gz
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+            archive: memos-desktop-macos-x86_64.tar.gz
+          - os: macos-15
+            target: aarch64-apple-darwin
+            archive: memos-desktop-macos-aarch64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: memos-desktop-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: ${{ matrix.target }}
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: scripts/install-linux-deps.sh
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }} -p memos-desktop
+      - name: Package Unix binary
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist/package
+          cp "target/${{ matrix.target }}/release/memos-desktop" dist/package/
+          cp LICENSE LICENSE-THIRD-PARTY.md NOTICE README.md dist/package/
+          tar -czf "dist/${{ matrix.archive }}" -C dist/package .
+          rm -rf dist/package
+      - name: Package Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/package | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/memos-desktop.exe" dist/package/
+          Copy-Item LICENSE, LICENSE-THIRD-PARTY.md, NOTICE, README.md dist/package/
+          Compress-Archive -Path "dist/package/*" -DestinationPath "dist/${{ matrix.archive }}"
+          Remove-Item -Recurse -Force dist/package
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/${{ matrix.archive }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+      - name: Generate checksums
+        working-directory: dist
+        run: sha256sum * > SHA256SUMS
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*
