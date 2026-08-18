@@ -3978,7 +3978,9 @@ impl MemosDesktop {
                             .danger()
                             .outline()
                             .label("Disconnect")
-                            .on_click(cx.listener(|this, _, _, cx| this.disconnect(cx))),
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.disconnect(window, cx)),
+                            ),
                     ),
                 ),
         )

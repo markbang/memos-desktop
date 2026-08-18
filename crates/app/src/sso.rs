@@ -83,46 +83,34 @@ impl SsoFlow {
         loop {
             match self.listener.accept() {
                 Ok((mut stream, _)) => {
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(5)))
+                        .map_err(|error| ApiError::Request(error.to_string()))?;
                     let mut request = [0_u8; 8192];
-                    let read = stream
-                        .read(&mut request)
-                        .map_err(|error| ApiError::Request(error.to_string()))?;
-                    let request = String::from_utf8_lossy(&request[..read]);
-                    let target = request
-                        .lines()
-                        .next()
-                        .and_then(|line| line.split_whitespace().nth(1))
-                        .ok_or_else(|| {
-                            ApiError::Request("invalid OAuth2 callback request".into())
-                        })?;
-                    let callback_url = Url::parse(&format!("http://127.0.0.1{target}"))
-                        .map_err(|error| ApiError::Request(error.to_string()))?;
-                    let mut code = None;
-                    let mut state = None;
-                    let mut oauth_error = None;
-                    for (key, value) in callback_url.query_pairs() {
-                        match key.as_ref() {
-                            "code" => code = Some(value.into_owned()),
-                            "state" => state = Some(value.into_owned()),
-                            "error" => oauth_error = Some(value.into_owned()),
-                            _ => {}
+                    let read = match stream.read(&mut request) {
+                        Ok(0) => continue,
+                        Ok(read) => read,
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                            ) =>
+                        {
+                            if Instant::now() >= deadline {
+                                return Err(ApiError::Request("SSO callback timed out".into()));
+                            }
+                            continue;
                         }
-                    }
-                    let result = if let Some(error) = oauth_error {
-                        Err(ApiError::Request(format!(
-                            "OAuth2 provider returned: {error}"
-                        )))
-                    } else if state.as_deref() != Some(self.state.as_str()) {
-                        Err(ApiError::Request("OAuth2 state validation failed".into()))
-                    } else {
-                        Ok(SsoCallback {
-                            code: code
-                                .ok_or(ApiError::MissingField("OAuth2 authorization code"))?,
+                        Err(error) => return Err(ApiError::Request(error.to_string())),
+                    };
+                    let request = String::from_utf8_lossy(&request[..read]);
+                    let result =
+                        parse_callback_code(&request, &self.state).map(|code| SsoCallback {
+                            code,
                             code_verifier: self.code_verifier,
                             idp_name: self.idp_name,
                             redirect_uri: self.redirect_uri,
-                        })
-                    };
+                        });
                     let (status, message) = match &result {
                         Ok(_) => (
                             "200 OK",
@@ -167,4 +155,53 @@ fn random_token(length: usize) -> String {
         .take(length)
         .map(char::from)
         .collect()
+}
+
+fn parse_callback_code(request: &str, expected_state: &str) -> Result<String, ApiError> {
+    let target = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .ok_or_else(|| ApiError::Request("invalid OAuth2 callback request".into()))?;
+    let callback_url = Url::parse(&format!("http://127.0.0.1{target}"))
+        .map_err(|error| ApiError::Request(error.to_string()))?;
+    let mut code = None;
+    let mut state = None;
+    let mut oauth_error = None;
+    for (key, value) in callback_url.query_pairs() {
+        match key.as_ref() {
+            "code" => code = Some(value.into_owned()),
+            "state" => state = Some(value.into_owned()),
+            "error" => oauth_error = Some(value.into_owned()),
+            _ => {}
+        }
+    }
+    if let Some(error) = oauth_error {
+        return Err(ApiError::Request(format!(
+            "OAuth2 provider returned: {error}"
+        )));
+    }
+    if state.as_deref() != Some(expected_state) {
+        return Err(ApiError::Request("OAuth2 state validation failed".into()));
+    }
+    code.ok_or(ApiError::MissingField("OAuth2 authorization code"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn callback_parser_requires_matching_state_and_code() {
+        assert_eq!(
+            parse_callback_code("GET /callback?state=state&code=code HTTP/1.1\r\n", "state")
+                .unwrap(),
+            "code"
+        );
+        assert!(
+            parse_callback_code("GET /callback?state=wrong&code=code HTTP/1.1\r\n", "state")
+                .is_err()
+        );
+        assert!(parse_callback_code("GET /callback?state=state HTTP/1.1\r\n", "state").is_err());
+    }
 }

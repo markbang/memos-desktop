@@ -79,12 +79,8 @@ impl ApiSession {
     }
 
     pub async fn delete_memo_reaction(&self, reaction_name: String) -> Result<(), ApiError> {
-        let segments = reaction_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request("invalid reaction resource name".into()));
-        }
-        let memo_id = segments[1].to_string();
-        let reaction_id = segments[3].to_string();
+        let (memo_id, reaction_id) =
+            nested_resource_ids(&reaction_name, "memos", "reactions", "reaction")?;
         self.execute(move |client| async move {
             client
                 .memo_service_delete_memo_reaction(&memo_id, &reaction_id)
@@ -271,32 +267,23 @@ impl ApiSession {
     pub async fn update_memo_view(
         &self,
         view: types::Shortcut,
+        update_mask: String,
     ) -> Result<types::Shortcut, ApiError> {
         let name = view
             .name
             .as_deref()
             .ok_or(ApiError::MissingField("memo view name"))?;
-        let segments = name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request("invalid memo view resource name".into()));
-        }
-        let user_id = segments[1].to_string();
-        let view_id = segments[3].to_string();
+        let (user_id, view_id) = nested_resource_ids(name, "users", "shortcuts", "shortcut")?;
         self.execute(move |client| async move {
             client
-                .shortcut_service_update_shortcut(&user_id, &view_id, Some("title,filter"), &view)
+                .shortcut_service_update_shortcut(&user_id, &view_id, Some(&update_mask), &view)
                 .await
         })
         .await
     }
 
     pub async fn delete_memo_view(&self, view_name: String) -> Result<(), ApiError> {
-        let segments = view_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request("invalid memo view resource name".into()));
-        }
-        let user_id = segments[1].to_string();
-        let view_id = segments[3].to_string();
+        let (user_id, view_id) = nested_resource_ids(&view_name, "users", "shortcuts", "shortcut")?;
         self.execute(move |client| async move {
             client
                 .shortcut_service_delete_shortcut(&user_id, &view_id)
@@ -313,14 +300,8 @@ impl ApiSession {
             .name
             .as_deref()
             .ok_or(ApiError::MissingField("notification name"))?;
-        let segments = name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request(
-                "invalid notification resource name".into(),
-            ));
-        }
-        let user_id = segments[1].to_string();
-        let notification_id = segments[3].to_string();
+        let (user_id, notification_id) =
+            nested_resource_ids(name, "users", "notifications", "notification")?;
         self.execute(move |client| async move {
             client
                 .user_service_update_user_notification(
@@ -335,14 +316,8 @@ impl ApiSession {
     }
 
     pub async fn delete_notification(&self, notification_name: String) -> Result<(), ApiError> {
-        let segments = notification_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request(
-                "invalid notification resource name".into(),
-            ));
-        }
-        let user_id = segments[1].to_string();
-        let notification_id = segments[3].to_string();
+        let (user_id, notification_id) =
+            nested_resource_ids(&notification_name, "users", "notifications", "notification")?;
         self.execute(move |client| async move {
             client
                 .user_service_delete_user_notification(&user_id, &notification_id)
@@ -488,14 +463,7 @@ impl ApiSession {
             .name
             .as_deref()
             .ok_or(ApiError::MissingField("user setting name"))?;
-        let segments = name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request(
-                "invalid user setting resource name".into(),
-            ));
-        }
-        let user_id = segments[1].to_string();
-        let setting_id = segments[3].to_string();
+        let (user_id, setting_id) = nested_resource_ids(name, "users", "settings", "user setting")?;
         self.execute(move |client| async move {
             client
                 .user_service_update_user_setting(
@@ -537,14 +505,12 @@ impl ApiSession {
     }
 
     pub async fn delete_linked_identity(&self, identity_name: String) -> Result<(), ApiError> {
-        let segments = identity_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request(
-                "invalid linked identity resource name".into(),
-            ));
-        }
-        let user_id = segments[1].to_string();
-        let identity_id = segments[3].to_string();
+        let (user_id, identity_id) = nested_resource_ids(
+            &identity_name,
+            "users",
+            "linkedIdentities",
+            "linked identity",
+        )?;
         self.execute(move |client| async move {
             client
                 .user_service_delete_linked_identity(&user_id, &identity_id)
@@ -599,14 +565,8 @@ impl ApiSession {
     }
 
     pub async fn delete_access_token(&self, token_name: String) -> Result<(), ApiError> {
-        let segments = token_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request(
-                "invalid access token resource name".into(),
-            ));
-        }
-        let user_id = segments[1].to_string();
-        let token_id = segments[3].to_string();
+        let (user_id, token_id) =
+            nested_resource_ids(&token_name, "users", "personalAccessTokens", "access token")?;
         self.execute(move |client| async move {
             client
                 .user_service_delete_personal_access_token(&user_id, &token_id)
@@ -650,12 +610,7 @@ impl ApiSession {
             .name
             .as_deref()
             .ok_or(ApiError::MissingField("webhook name"))?;
-        let segments = name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request("invalid webhook resource name".into()));
-        }
-        let user_id = segments[1].to_string();
-        let webhook_id = segments[3].to_string();
+        let (user_id, webhook_id) = nested_resource_ids(name, "users", "webhooks", "webhook")?;
         let update_mask = if webhook.signing_secret.is_some() {
             "display_name,url,signing_secret"
         } else {
@@ -675,12 +630,8 @@ impl ApiSession {
     }
 
     pub async fn delete_webhook(&self, webhook_name: String) -> Result<(), ApiError> {
-        let segments = webhook_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request("invalid webhook resource name".into()));
-        }
-        let user_id = segments[1].to_string();
-        let webhook_id = segments[3].to_string();
+        let (user_id, webhook_id) =
+            nested_resource_ids(&webhook_name, "users", "webhooks", "webhook")?;
         self.execute(move |client| async move {
             client
                 .user_service_delete_user_webhook(&user_id, &webhook_id)
@@ -690,12 +641,8 @@ impl ApiSession {
     }
 
     pub async fn get_webhook_secret(&self, webhook_name: String) -> Result<String, ApiError> {
-        let segments = webhook_name.split('/').collect::<Vec<_>>();
-        if segments.len() < 4 {
-            return Err(ApiError::Request("invalid webhook resource name".into()));
-        }
-        let user_id = segments[1].to_string();
-        let webhook_id = segments[3].to_string();
+        let (user_id, webhook_id) =
+            nested_resource_ids(&webhook_name, "users", "webhooks", "webhook")?;
         Ok(self
             .execute(move |client| async move {
                 client
@@ -823,5 +770,53 @@ impl ApiSession {
                 .await
         })
         .await
+    }
+}
+
+fn nested_resource_ids(
+    name: &str,
+    root: &str,
+    collection: &str,
+    label: &str,
+) -> Result<(String, String), ApiError> {
+    match name.split('/').collect::<Vec<_>>().as_slice() {
+        [actual_root, parent_id, actual_collection, child_id]
+            if *actual_root == root
+                && *actual_collection == collection
+                && !parent_id.is_empty()
+                && !child_id.is_empty() =>
+        {
+            Ok(((*parent_id).to_string(), (*child_id).to_string()))
+        }
+        _ => Err(ApiError::Request(format!(
+            "invalid {label} resource name: {name}"
+        ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nested_resource_parser_requires_the_exact_shape() {
+        assert_eq!(
+            nested_resource_ids("users/alice/webhooks/hook", "users", "webhooks", "webhook")
+                .unwrap(),
+            ("alice".into(), "hook".into())
+        );
+        assert!(
+            nested_resource_ids(
+                "users/alice/webhooks/hook/extra",
+                "users",
+                "webhooks",
+                "webhook"
+            )
+            .is_err()
+        );
+        assert!(
+            nested_resource_ids("memos/alice/webhooks/hook", "users", "webhooks", "webhook")
+                .is_err()
+        );
     }
 }

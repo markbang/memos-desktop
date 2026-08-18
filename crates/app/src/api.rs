@@ -531,11 +531,17 @@ impl ApiSession {
                 .map_err(|error| ApiError::Request(error.to_string()))?;
             std::fs::create_dir_all(&cache_dir)
                 .map_err(|error| ApiError::Request(error.to_string()))?;
-            let temporary = cache_path.with_extension("download");
+            let temporary =
+                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
             std::fs::write(&temporary, bytes)
                 .map_err(|error| ApiError::Request(error.to_string()))?;
-            std::fs::rename(&temporary, &cache_path)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
+            if let Err(error) = std::fs::rename(&temporary, &cache_path) {
+                let another_download_completed = cache_path.is_file();
+                _ = std::fs::remove_file(&temporary);
+                if !another_download_completed {
+                    return Err(ApiError::Request(error.to_string()));
+                }
+            }
             Ok(cache_path)
         });
         handle
@@ -1319,7 +1325,10 @@ mod tests {
                 .await
                 .unwrap();
             shortcut.title = format!("Updated live test {suffix}");
-            shortcut = session.update_memo_view(shortcut).await.unwrap();
+            shortcut = session
+                .update_memo_view(shortcut, "title,filter".into())
+                .await
+                .unwrap();
             assert!(shortcut.title.starts_with("Updated"));
             assert!(
                 session

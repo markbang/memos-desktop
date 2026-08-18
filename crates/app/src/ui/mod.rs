@@ -390,7 +390,10 @@ impl MemosDesktop {
                 let links = if urls.is_empty() {
                     Vec::new()
                 } else {
-                    session.batch_get_link_metadata(urls).await?
+                    session
+                        .batch_get_link_metadata(urls)
+                        .await
+                        .unwrap_or_default()
                 };
                 let previews = cache_attachment_previews(&session, &detail.attachments).await;
                 Ok::<_, crate::api::ApiError>((detail, links, previews))
@@ -1536,7 +1539,7 @@ impl MemosDesktop {
         .detach();
     }
 
-    fn disconnect(&mut self, cx: &mut Context<Self>) {
+    fn disconnect(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(cancel) = self.live_cancel.take() {
             cancel.store(true, Ordering::Release);
         }
@@ -1547,19 +1550,48 @@ impl MemosDesktop {
             .detach();
         }
         self.connected = false;
+        self.route = Route::Timeline;
+        self.quick_filter = QuickFilter::All;
+        self.active_server_filter = None;
         self.instance = None;
         self.current_user = None;
+        self.profile_user = None;
+        self.profile_stats = None;
         self.memos.clear();
         self.next_memo_page_token = None;
         self.next_notification_page_token = None;
         self.next_attachment_page_token = None;
         self.selected_memo_name = None;
+        self.search_query.clear();
+        self.visibility = MemoVisibility::Private;
+        self.detail_tab = DetailTab::Content;
+        self.detail_loading = false;
         self.detail = MemoDetailData::default();
+        self.detail_error = None;
+        self.link_metadata.clear();
         self.attachment_previews.clear();
+        self.memo_views.clear();
+        self.notifications.clear();
+        self.library_attachments.clear();
         self.account_resources = AccountResources::default();
         self.admin_resources = AdminResources::default();
+        self.settings_section = SettingsSection::default();
+        self.loading = false;
+        self.saving = false;
+        self.module_loading = false;
+        self.loading_more = false;
         self.error = None;
         self.notice = None;
+        for input in [
+            &self.password_input,
+            &self.token_input,
+            &self.shared_link_input,
+            &self.search_input,
+            &self.composer_input,
+            &self.comment_input,
+        ] {
+            input.update(cx, |input, cx| input.set_value("", window, cx));
+        }
         cx.notify();
     }
 
@@ -1602,6 +1634,12 @@ impl MemosDesktop {
                             this.memos.first().and_then(|memo| memo.name.clone());
                         this.route = Route::Profile;
                         this.error = None;
+                        if let Some(name) = this.selected_memo_name.clone() {
+                            this.load_detail(name, cx);
+                        } else {
+                            this.detail = MemoDetailData::default();
+                            this.detail_error = None;
+                        }
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -1661,7 +1699,7 @@ impl MemosDesktop {
         self.module_loading = true;
         cx.spawn(async move |this, cx| {
             let result = if updating {
-                session.update_memo_view(view).await
+                session.update_memo_view(view, "title,filter".into()).await
             } else {
                 session.create_memo_view(user_name, view).await
             };

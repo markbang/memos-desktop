@@ -20,7 +20,7 @@ Network work never executes on the render thread. `ApiSession` dispatches genera
 
 `api/openapi.yaml` is pinned to the official Memos `v0.30.0` contract. This matters because later Memos main builds replace the stable `ShortcutService` contract with a different saved-view service. `openapi-normalizer` parses the document structurally, removes generator-incompatible `default` response declarations, and repairs the known v0.30 instance-setting wildcard route. Progenitor then emits `crates/memos-api/src/generated.rs`; `scripts/update-api.sh` reapplies the small client-state hook after regeneration.
 
-Each generated `Client` owns clone-shared authentication state, so two sessions for the same server cannot overwrite one another. Progenitor's request hook injects the bearer token and the Memos refresh cookie. Memos v0.30's REST gateway exposes refresh cookies as response metadata and does not forward REST request cookies to gRPC metadata, so refresh and sign-out use the official Connect RPC endpoints while normal resource operations use the generated REST client.
+Each generated `Client` owns clone-shared authentication state, so two sessions for the same server cannot overwrite one another. Progenitor's request hook injects only the bearer token. Memos v0.30's REST gateway exposes refresh cookies as response metadata and does not forward REST request cookies to gRPC metadata, so the explicit Connect refresh/sign-out requests attach the cookie while normal resource operations use the generated REST client.
 
 ## Authentication invariants
 

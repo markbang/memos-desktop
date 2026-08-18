@@ -111,11 +111,6 @@ impl ClientHooks<()> for Client {
                 .headers_mut()
                 .insert(reqwest::header::AUTHORIZATION, token);
         }
-        if let Some(cookie) = state.refresh_cookie.clone() {
-            request
-                .headers_mut()
-                .insert(reqwest::header::COOKIE, cookie);
-        }
         Ok(())
     }
 }
@@ -133,7 +128,7 @@ mod tests {
     }
 
     #[test]
-    fn authentication_headers_are_injected_into_generated_requests() {
+    fn bearer_header_is_injected_without_exposing_the_refresh_cookie() {
         let client = Client::new("https://memos.example.com");
         set_access_token(&client, "token-123").unwrap();
         set_refresh_cookie(&client, "memos_refresh=refresh-123").unwrap();
@@ -155,10 +150,7 @@ mod tests {
                 .unwrap(),
             "Bearer token-123"
         );
-        assert_eq!(
-            request.headers().get(reqwest::header::COOKIE).unwrap(),
-            "memos_refresh=refresh-123"
-        );
+        assert!(request.headers().get(reqwest::header::COOKIE).is_none());
         assert!(
             request
                 .headers()
