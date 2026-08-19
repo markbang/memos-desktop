@@ -30,7 +30,25 @@ The current build includes:
 
 See `docs/FEATURE_MATRIX.md` for the parity plan and current status.
 
-## Run
+## Install
+
+Linux and macOS users can install the latest release without manually unpacking an archive:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/markbang/memos-desktop/main/scripts/install.sh | sh
+```
+
+The installer verifies the release archive against `SHA256SUMS`. Linux installs under `~/.local` and creates a desktop entry. macOS installs `Memos Desktop.app` under `~/Applications`. Install a specific release with `MEMOS_DESKTOP_VERSION=v0.1.0`, or uninstall while preserving user configuration with:
+
+```bash
+curl --proto '=https' --tlsv1.2 -fsSL \
+  https://raw.githubusercontent.com/markbang/memos-desktop/main/scripts/install.sh | sh -s -- --uninstall
+```
+
+Release binaries are not yet code-signed or notarized, so the operating system may show an unknown-publisher warning.
+
+## Build From Source
 
 Rust 1.97.1 is pinned by `rust-toolchain.toml`. Debian and Ubuntu users can install GPUI native dependencies with `scripts/install-linux-deps.sh`.
 

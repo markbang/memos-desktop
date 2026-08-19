@@ -75,12 +75,18 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - name: Check out source
+        uses: actions/checkout@v7
       - name: Download packages
         uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: dist
           merge-multiple: true
+      - name: Add installer
+        run: |
+          cp scripts/install.sh dist/install.sh
+          chmod +x dist/install.sh
       - name: Generate checksums
         working-directory: dist
         run: sha256sum * > SHA256SUMS
