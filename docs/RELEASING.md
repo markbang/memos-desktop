@@ -12,6 +12,6 @@ git tag -s v0.1.0 -m "memos-desktop v0.1.0"
 git push origin v0.1.0
 ```
 
-The Release workflow builds platform archives, generates SHA-256 checksums, and creates a GitHub Release with generated notes. Verify every artifact before announcing the release.
+The Release workflow builds platform archives, publishes `install.sh`, generates SHA-256 checksums, and creates a GitHub Release with generated notes. Verify every artifact and run the installer in an isolated user directory before announcing the release.
 
 The `memos-api` crate version tracks the upstream Memos API contract and is not the desktop application version.
