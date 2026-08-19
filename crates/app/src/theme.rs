@@ -131,7 +131,11 @@ fn configure_component_theme(cx: &mut App) {
     theme.colors.success = signal_green();
     theme.colors.success_hover = color(0x2aad80);
     theme.colors.success_active = color(0x187f5d);
-    theme.colors.success_foreground = color(0xffffff);
+    theme.colors.success_foreground = if dark {
+        color(0x17191d)
+    } else {
+        color(0xffffff)
+    };
     theme.colors.warning = amber();
     theme.colors.warning_hover = color(0xe2a23a);
     theme.colors.warning_active = color(0xb97710);
@@ -151,7 +155,11 @@ fn configure_component_theme(cx: &mut App) {
     theme.colors.info = cobalt();
     theme.colors.info_hover = if dark { color(0x89aaff) } else { cobalt_dark() };
     theme.colors.info_active = color(0x174bb5);
-    theme.colors.info_foreground = color(0xffffff);
+    theme.colors.info_foreground = if dark {
+        color(0x17191d)
+    } else {
+        color(0xffffff)
+    };
 
     theme.colors.sidebar = nav();
     theme.colors.sidebar_foreground = color(0xeef0ec);

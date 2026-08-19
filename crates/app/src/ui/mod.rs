@@ -177,6 +177,7 @@ pub struct MemosDesktop {
     session: Option<ApiSession>,
     instance: Option<InstanceProfile>,
     current_user: Option<User>,
+    saved_login_available: bool,
     known_users: HashMap<String, User>,
     user_avatars: HashMap<String, PathBuf>,
     profile_user: Option<User>,
@@ -298,6 +299,7 @@ impl MemosDesktop {
             session: None,
             instance,
             current_user,
+            saved_login_available: false,
             known_users: HashMap::new(),
             user_avatars: HashMap::new(),
             profile_user: None,
@@ -360,6 +362,8 @@ impl MemosDesktop {
                 .await
                 .map_err(|error| error.to_string())
                 .and_then(|result| result);
+            let saved_password_found = matches!(&password, Ok(Some(_)));
+            let mut missing_saved_password = false;
             let result = match password {
                 Ok(Some(password)) => {
                     let session = ApiSession::new(&server_url, runtime.clone());
@@ -387,7 +391,10 @@ impl MemosDesktop {
                         Err(error) => Err(error.to_string()),
                     }
                 }
-                Ok(None) => Err("No saved password was found.".into()),
+                Ok(None) => {
+                    missing_saved_password = true;
+                    Err("No saved password was found.".into())
+                }
                 Err(error) => Err(format!(
                     "Could not read the system credential store: {error}"
                 )),
@@ -396,12 +403,16 @@ impl MemosDesktop {
             _ = this.update(cx, |this, cx| {
                 this.loading = false;
                 this.notice = None;
+                this.saved_login_available = saved_password_found;
                 match result {
                     Ok((session, profile, user, response)) => {
+                        this.saved_login_available = true;
                         this.apply_connected_session(session, profile, Some(user), response, cx);
                     }
                     Err(error) => {
-                        this.persist_connection(server_url.clone(), username.clone(), false);
+                        if missing_saved_password {
+                            this.persist_connection(server_url.clone(), username.clone(), false);
+                        }
                         this.error = Some(format!("Automatic sign-in failed. {error}"));
                     }
                 }
@@ -455,6 +466,7 @@ impl MemosDesktop {
                     .and_then(|user| user.name.clone()),
             )
             .collect::<Vec<_>>();
+        let profile_users = self.profile_user.iter().cloned().collect::<Vec<_>>();
         let attachments = self
             .memos
             .iter()
@@ -466,10 +478,26 @@ impl MemosDesktop {
                     .take(6)
                     .cloned()
             })
-            .take(72)
+            .chain(
+                self.detail
+                    .attachments
+                    .iter()
+                    .filter(|attachment| is_previewable_image(attachment))
+                    .cloned(),
+            )
+            .chain(
+                self.library_attachments
+                    .iter()
+                    .filter(|attachment| is_previewable_image(attachment))
+                    .cloned(),
+            )
+            .take(120)
             .collect::<Vec<_>>();
         cx.spawn(async move |this, cx| {
-            let users = session.batch_get_users(creators).await.unwrap_or_default();
+            let mut users = session.batch_get_users(creators).await.unwrap_or_default();
+            users.extend(profile_users);
+            users.sort_by(|left, right| left.name.cmp(&right.name));
+            users.dedup_by(|left, right| left.name == right.name);
             let avatars = cache_user_avatars(&session, &users).await;
             let previews = cache_attachment_previews(&session, &attachments).await;
             _ = this.update(cx, |this, cx| {
@@ -513,20 +541,30 @@ impl MemosDesktop {
         let runtime = self.runtime.clone();
         cx.spawn(async move |this, cx| {
             let result = runtime
-                .spawn_blocking(move || {
-                    credentials::save_password(&server_url, &username, &password)
+                .spawn_blocking({
+                    let server_url = server_url.clone();
+                    let username = username.clone();
+                    move || credentials::save_password(&server_url, &username, &password)
                 })
                 .await
                 .map_err(|error| error.to_string())
                 .and_then(|result| result);
-            if let Err(error) = result {
-                _ = this.update(cx, |this, cx| {
-                    this.notice = Some(format!(
-                        "Signed in, but the system credential store could not save the password: {error}"
-                    ));
-                    cx.notify();
-                });
-            }
+            _ = this.update(cx, |this, cx| {
+                match result {
+                    Ok(()) => {
+                        this.saved_login_available = true;
+                        this.persist_connection(server_url, username, true);
+                    }
+                    Err(error) => {
+                        this.saved_login_available = false;
+                        this.persist_connection(server_url, username, false);
+                        this.notice = Some(format!(
+                            "Signed in, but the system credential store could not save the password: {error}"
+                        ));
+                    }
+                }
+                cx.notify();
+            });
         })
         .detach();
     }
@@ -551,6 +589,7 @@ impl MemosDesktop {
                 .map_err(|error| error.to_string())
                 .and_then(|result| result);
             _ = this.update(cx, |this, cx| {
+                this.saved_login_available = false;
                 this.notice = Some(match result {
                     Ok(()) => "Saved login removed from the system credential store.".into(),
                     Err(error) => format!("Could not remove the saved login: {error}"),
@@ -1394,6 +1433,7 @@ impl MemosDesktop {
                 match result {
                     Ok((user, response)) => {
                         let username = user.username.clone();
+                        this.saved_login_available = false;
                         this.apply_connected_session(session, profile, Some(user), response, cx);
                         this.persist_connection(server_url, username, false);
                     }
@@ -1616,7 +1656,6 @@ impl MemosDesktop {
                 match result {
                     Ok((session, profile, user, response)) => {
                         this.apply_connected_session(session, profile, Some(user), response, cx);
-                        this.persist_connection(server_url.clone(), username.clone(), true);
                         this.remember_password(server_url, username, password, cx);
                     }
                     Err(error) => this.error = Some(error.to_string()),
@@ -1697,10 +1736,11 @@ impl MemosDesktop {
                 match result {
                     Ok((session, profile, user, response)) => {
                         this.apply_connected_session(session, profile, user, response, cx);
-                        let auto_login = !anonymous && auth_mode == AuthMode::Password;
-                        this.persist_connection(server_url.clone(), username.clone(), auto_login);
-                        if auto_login {
+                        if !anonymous && auth_mode == AuthMode::Password {
                             this.remember_password(server_url, username, password, cx);
+                        } else {
+                            this.forget_saved_login(cx);
+                            this.persist_connection(server_url, username, false);
                         }
                     }
                     Err(error) => {
@@ -1783,6 +1823,7 @@ impl MemosDesktop {
         self.active_server_filter = None;
         self.instance = None;
         self.current_user = None;
+        self.saved_login_available = false;
         self.known_users.clear();
         self.user_avatars.clear();
         self.profile_user = None;
@@ -1867,13 +1908,13 @@ impl MemosDesktop {
                             this.memos.first().and_then(|memo| memo.name.clone());
                         this.route = Route::Profile;
                         this.error = None;
+                        this.refresh_memo_assets(cx);
                         if let Some(name) = this.selected_memo_name.clone() {
                             this.load_detail(name, cx);
                         } else {
                             this.detail = MemoDetailData::default();
                             this.detail_error = None;
                         }
-                        this.refresh_memo_assets(cx);
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -2180,11 +2221,39 @@ impl MemosDesktop {
             .current_user
             .as_ref()
             .and_then(|user| user.name.clone());
+        let previous_username = self.current_user.as_ref().map(|user| user.username.clone());
         let server_url = session.base_url().to_string();
+        let runtime = self.runtime.clone();
         self.module_loading = true;
         cx.spawn(async move |this, cx| {
-            let result = session.update_user(user, update_mask).await;
-            _ = this.update(cx, |this, cx| {
+            let mut migration_error = None;
+            let result = match session.update_user(user, update_mask).await {
+                Ok(user) => {
+                    if let Some(previous_username) = previous_username
+                        && previous_username != user.username
+                    {
+                        let server_url = server_url.clone();
+                        let new_username = user.username.clone();
+                        match runtime
+                            .spawn_blocking(move || {
+                                credentials::migrate_password(
+                                    &server_url,
+                                    &previous_username,
+                                    &new_username,
+                                )
+                            })
+                            .await
+                        {
+                            Ok(Ok(_)) => {}
+                            Ok(Err(error)) => migration_error = Some(error),
+                            Err(error) => migration_error = Some(error.to_string()),
+                        }
+                    }
+                    Ok(user)
+                }
+                Err(error) => Err(error),
+            };
+            _ = this.update(cx, move |this, cx| {
                 this.module_loading = false;
                 match result {
                     Ok(user) => {
@@ -2196,10 +2265,16 @@ impl MemosDesktop {
                         {
                             this.admin_resources.users[index] = user.clone();
                         }
+                        if let Some(error) = migration_error {
+                            this.error = Some(format!(
+                                "Profile saved, but the saved-login key could not migrate: {error}"
+                            ));
+                        } else {
+                            this.error = None;
+                        }
                         let auto_login = AppConfig::load().auto_login;
                         this.persist_connection(server_url, user.username.clone(), auto_login);
                         this.current_user = Some(user);
-                        this.error = None;
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }

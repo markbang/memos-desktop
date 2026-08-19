@@ -57,7 +57,7 @@ impl MemosDesktop {
         menu: PopupMenu,
         view: gpui::Entity<Self>,
         theme_preference: ThemePreference,
-        has_user: bool,
+        has_saved_login: bool,
     ) -> PopupMenu {
         let account_view = view.clone();
         let preferences_view = view.clone();
@@ -121,7 +121,7 @@ impl MemosDesktop {
             .item(
                 PopupMenuItem::new("Forget saved login")
                     .icon(IconName::Delete)
-                    .disabled(!has_user)
+                    .disabled(!has_saved_login)
                     .on_click(move |_, _, cx| {
                         forget_view.update(cx, |this, cx| {
                             this.forget_saved_login(cx);
@@ -162,7 +162,7 @@ impl MemosDesktop {
                 .into_any_element(),
         };
         let theme_preference = self.theme_preference;
-        let has_user = current_user.is_some();
+        let has_saved_login = self.saved_login_available;
         let view = cx.entity().clone();
         let settings_context_view = cx.entity().clone();
         v_flex()
@@ -229,7 +229,7 @@ impl MemosDesktop {
                                     menu,
                                     settings_context_view.clone(),
                                     theme_preference,
-                                    has_user,
+                                    has_saved_login,
                                 )
                             }),
                     )
@@ -243,7 +243,7 @@ impl MemosDesktop {
                                     menu,
                                     view.clone(),
                                     theme_preference,
-                                    has_user,
+                                    has_saved_login,
                                 )
                             }),
                     ),
@@ -589,10 +589,23 @@ impl MemosDesktop {
             _ => String::new(),
         };
         let profile_avatar = if self.route == Route::Profile {
-            self.profile_user
-                .as_ref()
-                .and_then(|user| user.name.as_deref())
-                .map(|name| self.user_avatar(name, 36.0))
+            self.profile_user.as_ref().map(|user| {
+                let name = user.name.as_deref().unwrap_or("users/profile");
+                match self.user_avatars.get(name) {
+                    Some(path) => Avatar::new()
+                        .with_size(Size::Size(px(36.0)))
+                        .src(path.clone())
+                        .into_any_element(),
+                    None => Avatar::new()
+                        .with_size(Size::Size(px(36.0)))
+                        .name(
+                            user.display_name
+                                .clone()
+                                .unwrap_or_else(|| user.username.clone()),
+                        )
+                        .into_any_element(),
+                }
+            })
         } else {
             None
         };
@@ -899,12 +912,16 @@ impl MemosDesktop {
         scope: &'static str,
         cx: &mut Context<Self>,
     ) -> Option<AnyElement> {
-        let items = attachments
+        let image_attachments = attachments
+            .iter()
+            .filter(|attachment| attachment.type_.starts_with("image/"))
+            .collect::<Vec<_>>();
+        let items = image_attachments
             .iter()
             .filter_map(|attachment| {
                 let name = attachment.name.as_ref()?;
                 let path = self.attachment_previews.get(name)?.clone();
-                Some((attachment.clone(), path))
+                Some(((*attachment).clone(), path))
             })
             .take(max_items)
             .collect::<Vec<_>>();
@@ -912,11 +929,7 @@ impl MemosDesktop {
             return None;
         }
         let shown_items = items.len();
-        let total_images = attachments
-            .iter()
-            .filter(|attachment| attachment.type_.starts_with("image/"))
-            .count();
-        let hidden = total_images.saturating_sub(items.len());
+        let hidden = image_attachments.len().saturating_sub(items.len());
         let view = cx.entity().clone();
         Some(
             div()
@@ -2768,10 +2781,7 @@ impl MemosDesktop {
             .filter(|attachment| attachment.type_.starts_with("image/"))
             .count();
         let media_gallery = self.attachment_gallery(&attachments, 30, 148.0, "library", cx);
-        let file_attachments = attachments
-            .into_iter()
-            .filter(|attachment| !attachment.type_.starts_with("image/"))
-            .collect::<Vec<_>>();
+        let file_attachments = attachments.into_iter().collect::<Vec<_>>();
         let has_more = self.next_attachment_page_token.is_some();
         let loading_more = self.loading_more;
         let upload_view = cx.entity().clone();
@@ -2816,7 +2826,7 @@ impl MemosDesktop {
                 v_flex()
                     .border_1()
                     .border_color(theme::line())
-                    .child(panel_label("DOCUMENTS AND OTHER FILES"))
+                    .child(panel_label("ALL ATTACHMENTS"))
                     .when(attachments_empty, |list| {
                         list.child(empty_state(
                             IconName::File,
@@ -2830,7 +2840,7 @@ impl MemosDesktop {
                                 .p_4()
                                 .text_xs()
                                 .text_color(theme::graphite())
-                                .child("All loaded attachments are shown in Media."),
+                                .child("Images and files are listed here for management."),
                         )
                     })
                     .children(file_attachments.into_iter().enumerate().map(

@@ -579,7 +579,25 @@ impl ApiSession {
             }
             Err(error) => return Err(ApiError::Request(error.to_string())),
         };
-        if !matches!(url.scheme(), "http" | "https") {
+        let inline_data = if url.scheme() == "data" {
+            let (metadata, data) = avatar_url
+                .strip_prefix("data:")
+                .and_then(|value| value.split_once(','))
+                .ok_or_else(|| ApiError::Request("invalid data avatar URL".into()))?;
+            if !metadata.starts_with("image/") || !metadata.ends_with(";base64") {
+                return Err(ApiError::Request(
+                    "data avatar URL must contain a base64 image".into(),
+                ));
+            }
+            Some(
+                BASE64
+                    .decode(data)
+                    .map_err(|error| ApiError::Request(error.to_string()))?,
+            )
+        } else {
+            None
+        };
+        if inline_data.is_none() && !matches!(url.scheme(), "http" | "https") {
             return Err(ApiError::Request(
                 "avatar URL must use HTTP or HTTPS".into(),
             ));
@@ -600,6 +618,17 @@ impl ApiSession {
             .collect::<String>();
         let cache_path = cache_dir.join(format!("{}-{avatar_hash}.image", resource_id(user_name)));
         if cache_path.is_file() {
+            return Ok(Some(cache_path));
+        }
+        if let Some(bytes) = inline_data {
+            std::fs::create_dir_all(&cache_dir)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            let temporary =
+                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
+            std::fs::write(&temporary, bytes)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            std::fs::rename(&temporary, &cache_path)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
             return Ok(Some(cache_path));
         }
 
@@ -630,8 +659,17 @@ impl ApiSession {
                 .map_err(|error| ApiError::Request(error.to_string()))?;
             std::fs::create_dir_all(&cache_dir)
                 .map_err(|error| ApiError::Request(error.to_string()))?;
-            std::fs::write(&cache_path, bytes)
+            let temporary =
+                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
+            std::fs::write(&temporary, bytes)
                 .map_err(|error| ApiError::Request(error.to_string()))?;
+            if let Err(error) = std::fs::rename(&temporary, &cache_path) {
+                let another_download_completed = cache_path.is_file();
+                _ = std::fs::remove_file(&temporary);
+                if !another_download_completed {
+                    return Err(ApiError::Request(error.to_string()));
+                }
+            }
             Ok(Some(cache_path))
         });
         handle
