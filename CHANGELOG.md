@@ -6,6 +6,8 @@ The project follows [Semantic Versioning](https://semver.org/) and uses GitHub R
 
 ## Unreleased
 
+## 0.1.0 - 2026-08-19
+
 ### Added
 
 - Native GPUI desktop application foundation.
