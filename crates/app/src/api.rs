@@ -450,15 +450,10 @@ impl ApiSession {
         attachment: types::Attachment,
         thumbnail: bool,
     ) -> Result<PathBuf, ApiError> {
-        if attachment
+        let external_link = attachment
             .external_link
             .as_deref()
-            .is_some_and(|link| !link.trim().is_empty())
-        {
-            return Err(ApiError::Request(
-                "external attachments are opened at their source URL".into(),
-            ));
-        }
+            .filter(|link| !link.trim().is_empty());
         let name = attachment
             .name
             .as_deref()
@@ -472,19 +467,24 @@ impl ApiSession {
                 "attachment filename must not contain path separators".into(),
             ));
         }
-        let mut url = Url::parse(&format!("{}/", self.base_url.trim_end_matches('/')))
-            .map_err(|error| ApiError::Request(error.to_string()))?;
-        {
-            let mut segments = url
-                .path_segments_mut()
-                .map_err(|_| ApiError::Request("Memos URL cannot contain path segments".into()))?;
-            segments.pop_if_empty().push("file");
-            for segment in name.split('/') {
-                segments.push(segment);
+        let mut url = if let Some(link) = external_link {
+            Url::parse(link).map_err(|error| ApiError::Request(error.to_string()))?
+        } else {
+            let mut url = Url::parse(&format!("{}/", self.base_url.trim_end_matches('/')))
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            {
+                let mut segments = url.path_segments_mut().map_err(|_| {
+                    ApiError::Request("Memos URL cannot contain path segments".into())
+                })?;
+                segments.pop_if_empty().push("file");
+                for segment in name.split('/') {
+                    segments.push(segment);
+                }
+                segments.push(filename);
             }
-            segments.push(filename);
-        }
-        if thumbnail {
+            url
+        };
+        if thumbnail && external_link.is_none() {
             url.query_pairs_mut().append_pair("thumbnail", "true");
         }
 
@@ -512,11 +512,13 @@ impl ApiSession {
             return Ok(cache_path);
         }
 
+        let send_authorization = same_origin(&url, &self.base_url);
         let session = self.clone();
         let handle = self.runtime.spawn(async move {
             session.refresh_if_needed().await?;
             let mut request = session.client.http_client().get(url.clone());
-            if let Some(header) = auth::authorization_header(&session.client) {
+            if send_authorization && let Some(header) = auth::authorization_header(&session.client)
+            {
                 request = request.header(reqwest::header::AUTHORIZATION, header);
             }
             let response = request
@@ -549,6 +551,126 @@ impl ApiSession {
                 }
             }
             Ok(cache_path)
+        });
+        handle
+            .await
+            .map_err(|error| ApiError::Runtime(error.to_string()))?
+    }
+
+    pub async fn cache_user_avatar(&self, user: types::User) -> Result<Option<PathBuf>, ApiError> {
+        let Some(avatar_url) = user
+            .avatar_url
+            .as_deref()
+            .filter(|url| !url.trim().is_empty())
+        else {
+            return Ok(None);
+        };
+        let user_name = user
+            .name
+            .as_deref()
+            .ok_or(ApiError::MissingField("user name"))?;
+        let url = match Url::parse(avatar_url) {
+            Ok(url) => url,
+            Err(url::ParseError::RelativeUrlWithoutBase) => {
+                Url::parse(&format!("{}/", self.base_url.trim_end_matches('/')))
+                    .map_err(|error| ApiError::Request(error.to_string()))?
+                    .join(avatar_url.trim_start_matches('/'))
+                    .map_err(|error| ApiError::Request(error.to_string()))?
+            }
+            Err(error) => return Err(ApiError::Request(error.to_string())),
+        };
+        let inline_data = if url.scheme() == "data" {
+            let (metadata, data) = avatar_url
+                .strip_prefix("data:")
+                .and_then(|value| value.split_once(','))
+                .ok_or_else(|| ApiError::Request("invalid data avatar URL".into()))?;
+            if !metadata.starts_with("image/") || !metadata.ends_with(";base64") {
+                return Err(ApiError::Request(
+                    "data avatar URL must contain a base64 image".into(),
+                ));
+            }
+            Some(
+                BASE64
+                    .decode(data)
+                    .map_err(|error| ApiError::Request(error.to_string()))?,
+            )
+        } else {
+            None
+        };
+        if inline_data.is_none() && !matches!(url.scheme(), "http" | "https") {
+            return Err(ApiError::Request(
+                "avatar URL must use HTTP or HTTPS".into(),
+            ));
+        }
+
+        let project_dirs =
+            ProjectDirs::from("com", "Memos Desktop", "Memos Desktop").ok_or_else(|| {
+                ApiError::Request("application cache directory is unavailable".into())
+            })?;
+        let server_hash = Sha256::digest(self.base_url.as_bytes())[..8]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let cache_dir = project_dirs.cache_dir().join("avatars").join(server_hash);
+        let avatar_hash = Sha256::digest(avatar_url.as_bytes())[..6]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let cache_path = cache_dir.join(format!("{}-{avatar_hash}.image", resource_id(user_name)));
+        if cache_path.is_file() {
+            return Ok(Some(cache_path));
+        }
+        if let Some(bytes) = inline_data {
+            std::fs::create_dir_all(&cache_dir)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            let temporary =
+                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
+            std::fs::write(&temporary, bytes)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            std::fs::rename(&temporary, &cache_path)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            return Ok(Some(cache_path));
+        }
+
+        let send_authorization = same_origin(&url, &self.base_url);
+        let session = self.clone();
+        let handle = self.runtime.spawn(async move {
+            session.refresh_if_needed().await?;
+            let mut request = session.client.http_client().get(url.clone());
+            if send_authorization && let Some(header) = auth::authorization_header(&session.client)
+            {
+                request = request.header(reqwest::header::AUTHORIZATION, header);
+            }
+            let response = request
+                .send()
+                .await
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            let status = response.status();
+            if !status.is_success() {
+                let body = response.text().await.unwrap_or_default();
+                return Err(ApiError::Request(format!(
+                    "HTTP {status} from {url}: {}",
+                    body.chars().take(256).collect::<String>()
+                )));
+            }
+            let bytes = response
+                .bytes()
+                .await
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            std::fs::create_dir_all(&cache_dir)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            let temporary =
+                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
+            std::fs::write(&temporary, bytes)
+                .map_err(|error| ApiError::Request(error.to_string()))?;
+            if let Err(error) = std::fs::rename(&temporary, &cache_path) {
+                let another_download_completed = cache_path.is_file();
+                _ = std::fs::remove_file(&temporary);
+                if !another_download_completed {
+                    return Err(ApiError::Request(error.to_string()));
+                }
+            }
+            Ok(Some(cache_path))
         });
         handle
             .await
@@ -921,6 +1043,14 @@ pub(crate) fn resource_id(name: &str) -> &str {
     name.rsplit('/').next().unwrap_or(name)
 }
 
+fn same_origin(url: &Url, base_url: &str) -> bool {
+    Url::parse(base_url).is_ok_and(|base| {
+        base.scheme() == url.scheme()
+            && base.host_str() == url.host_str()
+            && base.port_or_known_default() == url.port_or_known_default()
+    })
+}
+
 fn is_supported_version(version: Option<&str>) -> bool {
     let mut parts = version.unwrap_or_default().split('.');
     parts.next() == Some("0") && parts.next() == Some("30")
@@ -998,6 +1128,23 @@ mod tests {
         let events = drain_sse_events(&mut buffer);
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].kind, "memo.deleted");
+    }
+
+    #[test]
+    fn authorization_is_scoped_to_the_instance_origin() {
+        let base = "https://memos.example.com";
+        assert!(same_origin(
+            &Url::parse("https://memos.example.com/file/1").unwrap(),
+            base
+        ));
+        assert!(!same_origin(
+            &Url::parse("https://cdn.example.com/file/1").unwrap(),
+            base
+        ));
+        assert!(!same_origin(
+            &Url::parse("http://memos.example.com/file/1").unwrap(),
+            base
+        ));
     }
 
     #[test]
@@ -1091,15 +1238,24 @@ mod tests {
                 .await
                 .unwrap();
             assert_eq!(registered_user.name, registered.name);
+            let avatar_data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
             registered_user.display_name = Some("Updated desktop live user".into());
+            registered_user.avatar_url = Some(avatar_data.into());
             registered_user.password = None;
             registered_user = registration_session
-                .update_user(registered_user, "display_name".into())
+                .update_user(registered_user, "display_name,avatar_url".into())
                 .await
                 .unwrap();
             assert_eq!(
                 registered_user.display_name.as_deref(),
                 Some("Updated desktop live user")
+            );
+            assert!(
+                registration_session
+                    .cache_user_avatar(registered_user.clone())
+                    .await
+                    .unwrap()
+                    .is_some_and(|path| path.is_file())
             );
 
             let (mut live_events, live_cancel) = session.subscribe_live().into_parts();

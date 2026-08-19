@@ -3,11 +3,26 @@ use std::{fs, io, path::PathBuf};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+use crate::theme::ThemePreference;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub server_url: String,
     pub username: String,
+    pub auto_login: bool,
+    pub theme: ThemePreference,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            server_url: String::new(),
+            username: String::new(),
+            auto_login: false,
+            theme: ThemePreference::System,
+        }
+    }
 }
 
 impl AppConfig {
@@ -39,4 +54,19 @@ impl AppConfig {
 fn config_path() -> Option<PathBuf> {
     ProjectDirs::from("com", "Memos Desktop", "Memos Desktop")
         .map(|directories| directories.config_dir().join("config.json"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn old_config_defaults_to_system_theme_without_assuming_saved_credentials() {
+        let config: AppConfig = serde_json::from_str(
+            r#"{"server_url":"https://memos.example.com","username":"alice"}"#,
+        )
+        .unwrap();
+        assert!(!config.auto_login);
+        assert_eq!(config.theme, ThemePreference::System);
+    }
 }

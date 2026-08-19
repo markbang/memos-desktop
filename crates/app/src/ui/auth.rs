@@ -158,8 +158,8 @@ impl MemosDesktop {
                             .gap_2()
                             .text_xs()
                             .text_color(theme::color(0x7f858e))
-                            .child("Passwords and access tokens stay in memory.")
-                            .child("Only the server URL and username are saved."),
+                            .child("Passwords are stored only in the system credential store.")
+                            .child("Successful password sign-in resumes automatically next time."),
                     ),
             )
             .child(
@@ -188,7 +188,7 @@ impl MemosDesktop {
                                     .gap_1()
                                     .p_1()
                                     .rounded(px(4.0))
-                                    .bg(theme::color(0xe9ebe7))
+                                    .bg(theme::subtle_surface())
                                     .child(
                                         Button::new("auth-password")
                                             .small()
@@ -248,10 +248,10 @@ impl MemosDesktop {
                                         .gap_2()
                                         .p_3()
                                         .border_1()
-                                        .border_color(theme::color(0xe1b6b1))
-                                        .bg(theme::color(0xfff4f2))
+                                        .border_color(theme::error_border())
+                                        .bg(theme::error_background())
                                         .text_sm()
-                                        .text_color(theme::color(0x9c3028))
+                                        .text_color(theme::error_text())
                                         .child(Icon::new(IconName::TriangleAlert).size_4())
                                         .child(div().flex_1().min_w_0().child(error)),
                                 )

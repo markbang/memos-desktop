@@ -20,6 +20,7 @@ futures.workspace = true
 gpui.workspace = true
 gpui-component.workspace = true
 gpui-component-assets.workspace = true
+keyring.workspace = true
 memos-api = { path = "../memos-api" }
 mime_guess.workspace = true
 rand.workspace = true

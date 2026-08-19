@@ -1,6 +1,7 @@
 mod api;
 mod api_ext;
 mod config;
+mod credentials;
 mod demo;
 mod sso;
 mod theme;
@@ -17,7 +18,7 @@ fn main() {
 
     app.run(move |cx: &mut App| {
         gpui_component::init(cx);
-        theme::install(cx);
+        theme::install(config::AppConfig::load().theme, cx);
 
         let bounds = Bounds::centered(None, size(px(1440.0), px(900.0)), cx);
         let options = WindowOptions {
