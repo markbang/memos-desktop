@@ -21,7 +21,7 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: memos-desktop-linux-x86_64.tar.gz
-          - os: macos-15-large
+          - os: macos-13
             target: x86_64-apple-darwin
             archive: memos-desktop-macos-x86_64.tar.gz
           - os: macos-15
