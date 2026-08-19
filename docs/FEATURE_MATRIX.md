@@ -27,7 +27,7 @@ Status values:
 | Sharing | Create expiring links, copy, list, and revoke | Done |
 | Sharing | Open a shared memo without authentication | Done |
 | Attachments | Paginated library, multi-file upload, external links, edit, and delete | Done |
-| Attachments | Authenticated image thumbnails and default-app opening for all file types | Done |
+| Attachments | Inline Memo galleries, authenticated thumbnails, image lightbox, and default-app opening | Done |
 | Attachments | Motion-photo metadata grouping and native audio/video playback | Foundation |
 | Shortcuts | List, create, edit, execute, and delete v0.30 saved CEL shortcuts | Done |
 | Inbox | Paginated mention/comment notifications and related-Memo navigation | Done |
@@ -42,6 +42,7 @@ Status values:
 | Admin | SMTP test, OAuth2 identity-provider CRUD, and instance statistics | Done |
 | AI | Select audio and insert server transcription into the composer | Done |
 | Live updates | Authenticated SSE reconnect and memo/comment/reaction refresh | Done |
+| Desktop | System/light/dark themes, user avatars, context menu, and secure auto-login | Done |
 | Desktop | Multi-profile connection switcher | Desktop roadmap |
 | Desktop | System tray and global quick capture | Desktop roadmap |
 | Desktop | Protocol/deep-link registration | Desktop roadmap |
