@@ -36,14 +36,14 @@ Linux and macOS users can install the latest release without manually unpacking 
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/markbang/memos-desktop/main/scripts/install.sh | sh
+  https://github.com/markbang/memos-desktop/releases/latest/download/install.sh | sh
 ```
 
 The installer checks the release archive against the same release's `SHA256SUMS` to detect corruption. Download authenticity still relies on GitHub HTTPS and release integrity. Linux installs under `~/.local` and creates an XDG desktop entry. macOS installs `Memos Desktop.app` under `~/Applications`. Install a specific release with `MEMOS_DESKTOP_VERSION=v0.1.0`, or uninstall while preserving user configuration with:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
-  https://raw.githubusercontent.com/markbang/memos-desktop/main/scripts/install.sh | sh -s -- --uninstall
+  https://github.com/markbang/memos-desktop/releases/latest/download/install.sh | sh -s -- --uninstall
 ```
 
 Release binaries are not yet code-signed or notarized, so the operating system may show an unknown-publisher warning.
