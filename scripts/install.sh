@@ -5,6 +5,10 @@ REPOSITORY="markbang/memos-desktop"
 VERSION="${MEMOS_DESKTOP_VERSION:-latest}"
 INSTALL_ROOT="${MEMOS_DESKTOP_INSTALL_ROOT:-$HOME/.local}"
 APPLICATIONS_DIR="${MEMOS_DESKTOP_APPLICATIONS_DIR:-$HOME/Applications}"
+DATA_HOME="${XDG_DATA_HOME:-$INSTALL_ROOT/share}"
+ROLLBACK_FROM=""
+ROLLBACK_TO=""
+temp=""
 
 usage() {
   cat <<'EOF'
@@ -50,9 +54,45 @@ download() {
   if command -v curl >/dev/null 2>&1; then
     curl --proto '=https' --tlsv1.2 -fsSL "$url" -o "$destination"
   elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$destination" "$url"
+    wget --https-only -qO "$destination" "$url"
   else
     fail "curl or wget is required"
+  fi
+}
+
+cleanup() {
+  status="$?"
+  trap - EXIT HUP INT TERM
+  if [ -n "$ROLLBACK_FROM" ] && [ -e "$ROLLBACK_FROM" ] && [ ! -e "$ROLLBACK_TO" ]; then
+    mv "$ROLLBACK_FROM" "$ROLLBACK_TO" || true
+  fi
+  if [ -n "$temp" ]; then
+    rm -rf "$temp"
+  fi
+  exit "$status"
+}
+
+replace_directory() {
+  stage="$1"
+  destination="$2"
+  backup="$destination.previous"
+  rm -rf "$backup"
+  if [ -e "$destination" ]; then
+    mv "$destination" "$backup"
+    ROLLBACK_FROM="$backup"
+    ROLLBACK_TO="$destination"
+  fi
+  if mv "$stage" "$destination"; then
+    ROLLBACK_FROM=""
+    ROLLBACK_TO=""
+    rm -rf "$backup"
+  else
+    if [ -e "$backup" ] && [ ! -e "$destination" ]; then
+      mv "$backup" "$destination" || true
+    fi
+    ROLLBACK_FROM=""
+    ROLLBACK_TO=""
+    fail "could not replace $destination"
   fi
 }
 
@@ -99,15 +139,15 @@ install_linux() {
   stage="$INSTALL_ROOT/lib/.memos-desktop.new"
 
   rm -rf "$stage"
-  mkdir -p "$stage" "$INSTALL_ROOT/bin" "$INSTALL_ROOT/share/applications"
+  mkdir -p "$stage" "$INSTALL_ROOT/bin" "$DATA_HOME/applications"
   cp -R "$source_dir/." "$stage/"
   [ -f "$stage/memos-desktop" ] || fail "release archive has no memos-desktop binary"
   chmod 755 "$stage/memos-desktop"
-  rm -rf "$app_dir"
-  mv "$stage" "$app_dir"
-  ln -sfn "$app_dir/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
+  replace_directory "$stage" "$app_dir"
+  rm -f "$INSTALL_ROOT/bin/memos-desktop"
+  ln -s "$app_dir/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
 
-  desktop_file="$INSTALL_ROOT/share/applications/com.markbang.MemosDesktop.desktop"
+  desktop_file="$DATA_HOME/applications/com.markbang.MemosDesktop.desktop"
   cat >"$desktop_file" <<EOF
 [Desktop Entry]
 Type=Application
@@ -122,7 +162,7 @@ StartupNotify=true
 EOF
 
   if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "$INSTALL_ROOT/share/applications" >/dev/null 2>&1 || true
+    update-desktop-database "$DATA_HOME/applications" >/dev/null 2>&1 || true
   fi
 
   echo "Memos Desktop installed to $app_dir"
@@ -154,15 +194,21 @@ install_macos() {
   <key>CFBundleIdentifier</key><string>com.markbang.MemosDesktop</string>
   <key>CFBundleName</key><string>Memos Desktop</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+EOF
+  cat >>"$stage/Contents/Info.plist" <<EOF
+  <key>CFBundleShortVersionString</key><string>$RESOLVED_VERSION</string>
+  <key>CFBundleVersion</key><string>$RESOLVED_VERSION</string>
+EOF
+  cat >>"$stage/Contents/Info.plist" <<'EOF'
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
 </dict>
 </plist>
 EOF
 
-  rm -rf "$app_path"
-  mv "$stage" "$app_path"
-  ln -sfn "$app_path/Contents/MacOS/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
+  replace_directory "$stage" "$app_path"
+  rm -f "$INSTALL_ROOT/bin/memos-desktop"
+  ln -s "$app_path/Contents/MacOS/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
   echo "Memos Desktop installed to $app_path"
   echo "Open it with: open '$app_path'"
   path_instructions
@@ -173,7 +219,7 @@ uninstall() {
   rm -f "$INSTALL_ROOT/bin/memos-desktop"
   if [ "$platform" = "linux" ]; then
     rm -rf "$INSTALL_ROOT/lib/memos-desktop"
-    rm -f "$INSTALL_ROOT/share/applications/com.markbang.MemosDesktop.desktop"
+    rm -f "$DATA_HOME/applications/com.markbang.MemosDesktop.desktop"
   else
     rm -rf "$APPLICATIONS_DIR/Memos Desktop.app"
   fi
@@ -218,7 +264,7 @@ main() {
 
   temp_root="${TMPDIR:-/tmp}"
   temp="$(mktemp -d "$temp_root/memos-desktop.XXXXXX")"
-  trap 'rm -rf "$temp"' EXIT HUP INT TERM
+  trap cleanup EXIT HUP INT TERM
   archive="$temp/$asset"
   checksums="$temp/SHA256SUMS"
 
@@ -226,13 +272,24 @@ main() {
     [ -n "${MEMOS_DESKTOP_CHECKSUMS_PATH:-}" ] || fail "MEMOS_DESKTOP_CHECKSUMS_PATH is required with a local archive"
     cp "$MEMOS_DESKTOP_ARCHIVE_PATH" "$archive"
     cp "$MEMOS_DESKTOP_CHECKSUMS_PATH" "$checksums"
+    RESOLVED_VERSION="${MEMOS_DESKTOP_RESOLVED_VERSION:-0.1.0}"
   else
     case "$VERSION" in
-      latest) release_base="https://github.com/$REPOSITORY/releases/latest/download" ;;
-      v*) release_base="https://github.com/$REPOSITORY/releases/download/$VERSION" ;;
-      *) release_base="https://github.com/$REPOSITORY/releases/download/v$VERSION" ;;
+      latest)
+        metadata="$temp/latest.json"
+        download "https://api.github.com/repos/$REPOSITORY/releases/latest" "$metadata"
+        release_tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$metadata" | head -n 1)"
+        [ -n "$release_tag" ] || fail "could not resolve the latest release"
+        ;;
+      v*) release_tag="$VERSION" ;;
+      *) release_tag="v$VERSION" ;;
     esac
-    echo "Downloading Memos Desktop $VERSION for $platform-$architecture..."
+    RESOLVED_VERSION="${release_tag#v}"
+    case "$RESOLVED_VERSION" in
+      '' | *[!0-9.]*) fail "release version is not valid for installation: $release_tag" ;;
+    esac
+    release_base="https://github.com/$REPOSITORY/releases/download/$release_tag"
+    echo "Downloading Memos Desktop $release_tag for $platform-$architecture..."
     download "$release_base/$asset" "$archive"
     download "$release_base/SHA256SUMS" "$checksums"
   fi

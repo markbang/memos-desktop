@@ -39,7 +39,7 @@ curl --proto '=https' --tlsv1.2 -fsSL \
   https://raw.githubusercontent.com/markbang/memos-desktop/main/scripts/install.sh | sh
 ```
 
-The installer verifies the release archive against `SHA256SUMS`. Linux installs under `~/.local` and creates a desktop entry. macOS installs `Memos Desktop.app` under `~/Applications`. Install a specific release with `MEMOS_DESKTOP_VERSION=v0.1.0`, or uninstall while preserving user configuration with:
+The installer checks the release archive against the same release's `SHA256SUMS` to detect corruption. Download authenticity still relies on GitHub HTTPS and release integrity. Linux installs under `~/.local` and creates an XDG desktop entry. macOS installs `Memos Desktop.app` under `~/Applications`. Install a specific release with `MEMOS_DESKTOP_VERSION=v0.1.0`, or uninstall while preserving user configuration with:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \

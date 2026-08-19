@@ -61,6 +61,9 @@ jobs:
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: scripts/install-linux-deps.sh
+      - name: Test one-click installer on Unix
+        if: runner.os != 'Windows'
+        run: sh scripts/test-install.sh
       - name: Check workspace
         run: cargo check --workspace --locked
       - name: Run tests
