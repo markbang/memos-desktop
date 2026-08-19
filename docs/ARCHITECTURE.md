@@ -24,8 +24,8 @@ Each generated `Client` owns clone-shared authentication state, so two sessions 
 
 ## Authentication invariants
 
-- Passwords are never persisted.
-- Access tokens are never written to application configuration.
+- Passwords are persisted only through the operating system credential store and can be forgotten from the account context menu.
+- Passwords and access tokens are never written to application configuration.
 - Bearer tokens are marked sensitive in HTTP headers.
 - Refresh occurs 30 seconds before token expiry.
 - Personal access tokens have no client-side expiry assumption.

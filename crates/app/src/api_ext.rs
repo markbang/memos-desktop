@@ -326,6 +326,29 @@ impl ApiSession {
         .await
     }
 
+    pub async fn batch_get_users(
+        &self,
+        user_names: Vec<String>,
+    ) -> Result<Vec<types::User>, ApiError> {
+        let mut usernames = user_names
+            .into_iter()
+            .map(|name| resource_id(&name).to_string())
+            .filter(|name| !name.is_empty())
+            .collect::<Vec<_>>();
+        usernames.sort();
+        usernames.dedup();
+        if usernames.is_empty() {
+            return Ok(Vec::new());
+        }
+        let request = types::BatchGetUsersRequest { usernames };
+        Ok(self
+            .execute(
+                move |client| async move { client.user_service_batch_get_users(&request).await },
+            )
+            .await?
+            .users)
+    }
+
     pub async fn list_users_page(
         &self,
         filter: Option<String>,

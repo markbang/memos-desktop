@@ -23,6 +23,8 @@ The current build includes:
 - Markdown detail inspector with activity, links, shares, and files tabs
 - Memo editing, creation-time/location updates, task actions, CEL saved shortcuts, and pagination
 - Comment/reaction/relation activity, share-link expiry/revocation, and authenticated attachment previews/opening
+- Inline Memo image galleries, image lightbox previews, and a media-focused attachment library
+- System/light/dark appearance modes, user avatars, right-click account menus, and system-keyring auto-login
 - Inbox notification navigation, archive/delete mutations, account/PAT/webhook settings, and admin resources
 - Password registration, SSO/OAuth2 PKCE, shared memo links, and SSE live refresh
 - Demo mode for visual development without a server
@@ -83,7 +85,7 @@ cargo test -p memos-desktop live_v030_core_round_trip -- --ignored
 
 ## Security
 
-Passwords, access tokens, and refresh cookies are kept in process memory only. The local configuration persists only the last server URL and username. Refresh cookies are held in the active session's clone-shared authentication state.
+Password sign-in credentials are stored only through the operating system credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) so a successful session can resume on the next launch. Access tokens and refresh cookies remain process-local. The JSON configuration stores only the server URL, username, auto-login preference, and theme preference.
 
 ## Structure
 

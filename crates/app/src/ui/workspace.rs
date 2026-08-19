@@ -9,11 +9,13 @@ use gpui::{
     img, prelude::FluentBuilder as _, px,
 };
 use gpui_component::{
-    Disableable, Icon, IconName, Sizable, StyledExt, WindowExt as _,
+    Disableable, Icon, IconName, Sizable, Size, StyledExt, WindowExt as _,
+    avatar::Avatar,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
     h_flex,
     input::{Input, InputState},
+    menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem},
     scroll::ScrollableElement,
     spinner::Spinner,
     text::TextView,
@@ -24,7 +26,7 @@ use memos_api::types::{Memo, MemoState, MemoVisibility, Shortcut, UserRole};
 use super::{
     DetailTab, MemosDesktop, QuickFilter, Route, SettingsSection, external_attachment_url,
 };
-use crate::theme;
+use crate::{theme, theme::ThemePreference};
 
 impl MemosDesktop {
     pub(super) fn render_workspace(
@@ -51,7 +53,118 @@ impl MemosDesktop {
             .into_any_element()
     }
 
+    fn account_context_menu(
+        menu: PopupMenu,
+        view: gpui::Entity<Self>,
+        theme_preference: ThemePreference,
+        has_user: bool,
+    ) -> PopupMenu {
+        let account_view = view.clone();
+        let preferences_view = view.clone();
+        let system_view = view.clone();
+        let light_view = view.clone();
+        let dark_view = view.clone();
+        let forget_view = view.clone();
+        let disconnect_view = view;
+        menu.label("Memos Desktop")
+            .item(
+                PopupMenuItem::new("Account")
+                    .icon(IconName::User)
+                    .on_click(move |_, _, cx| {
+                        account_view.update(cx, |this, cx| {
+                            this.settings_section = SettingsSection::Account;
+                            this.navigate(Route::Settings, cx);
+                        });
+                    }),
+            )
+            .item(
+                PopupMenuItem::new("Preferences")
+                    .icon(IconName::Settings2)
+                    .on_click(move |_, _, cx| {
+                        preferences_view.update(cx, |this, cx| {
+                            this.settings_section = SettingsSection::Preferences;
+                            this.navigate(Route::Settings, cx);
+                        });
+                    }),
+            )
+            .separator()
+            .item(
+                PopupMenuItem::new("Follow system theme")
+                    .checked(theme_preference == ThemePreference::System)
+                    .on_click(move |_, window, cx| {
+                        system_view.update(cx, |this, cx| {
+                            this.set_theme_preference(ThemePreference::System, window, cx);
+                        });
+                    }),
+            )
+            .item(
+                PopupMenuItem::new("Light theme")
+                    .icon(IconName::Sun)
+                    .checked(theme_preference == ThemePreference::Light)
+                    .on_click(move |_, window, cx| {
+                        light_view.update(cx, |this, cx| {
+                            this.set_theme_preference(ThemePreference::Light, window, cx);
+                        });
+                    }),
+            )
+            .item(
+                PopupMenuItem::new("Dark theme")
+                    .icon(IconName::Moon)
+                    .checked(theme_preference == ThemePreference::Dark)
+                    .on_click(move |_, window, cx| {
+                        dark_view.update(cx, |this, cx| {
+                            this.set_theme_preference(ThemePreference::Dark, window, cx);
+                        });
+                    }),
+            )
+            .separator()
+            .item(
+                PopupMenuItem::new("Forget saved login")
+                    .icon(IconName::Delete)
+                    .disabled(!has_user)
+                    .on_click(move |_, _, cx| {
+                        forget_view.update(cx, |this, cx| {
+                            this.forget_saved_login(cx);
+                        });
+                    }),
+            )
+            .item(
+                PopupMenuItem::new("Disconnect")
+                    .icon(IconName::WindowClose)
+                    .on_click(move |_, window, cx| {
+                        disconnect_view.update(cx, |this, cx| {
+                            this.disconnect(window, cx);
+                        });
+                    }),
+            )
+    }
+
     fn render_nav_rail(&self, cx: &mut Context<Self>) -> AnyElement {
+        let current_user = self.current_user.clone();
+        let avatar_name = current_user
+            .as_ref()
+            .and_then(|user| user.display_name.clone())
+            .or_else(|| current_user.as_ref().map(|user| user.username.clone()))
+            .unwrap_or_else(|| "Guest".into());
+        let avatar_path = current_user
+            .as_ref()
+            .and_then(|user| user.name.as_ref())
+            .and_then(|name| self.user_avatars.get(name))
+            .cloned();
+        let avatar: AnyElement = match avatar_path {
+            Some(path) => Avatar::new()
+                .with_size(Size::Size(px(32.0)))
+                .src(path)
+                .into_any_element(),
+            None => Avatar::new()
+                .with_size(Size::Size(px(32.0)))
+                .name(avatar_name)
+                .into_any_element(),
+        };
+        let theme_preference = self.theme_preference;
+        let has_user = current_user.is_some();
+        let view = cx.entity().clone();
+        let settings_context_view = cx.entity().clone();
         v_flex()
             .id("nav-rail")
             .w(px(theme::NAV_WIDTH))
@@ -62,7 +175,7 @@ impl MemosDesktop {
             .py_4()
             .bg(theme::nav())
             .border_r_1()
-            .border_color(theme::color(0x30343b))
+            .border_color(theme::nav_border())
             .child(
                 v_flex()
                     .items_center()
@@ -108,19 +221,31 @@ impl MemosDesktop {
                 v_flex()
                     .items_center()
                     .gap_3()
-                    .child(self.nav_button(Route::Settings, IconName::Settings, cx))
                     .child(
                         div()
-                            .size_8()
-                            .rounded(px(4.0))
-                            .bg(theme::cobalt())
-                            .text_color(theme::color(0xffffff))
-                            .text_xs()
-                            .font_semibold()
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .child(self.user_initials()),
+                            .child(self.nav_button(Route::Settings, IconName::Settings, cx))
+                            .context_menu(move |menu, _, _| {
+                                Self::account_context_menu(
+                                    menu,
+                                    settings_context_view.clone(),
+                                    theme_preference,
+                                    has_user,
+                                )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .id("account-context")
+                            .cursor_pointer()
+                            .child(avatar)
+                            .context_menu(move |menu, _, _| {
+                                Self::account_context_menu(
+                                    menu,
+                                    view.clone(),
+                                    theme_preference,
+                                    has_user,
+                                )
+                            }),
                     ),
             )
             .into_any_element()
@@ -305,7 +430,7 @@ impl MemosDesktop {
                     .text_color(theme::cobalt_dark())
             })
             .when(!selected, |row| {
-                row.hover(|style| style.bg(theme::color(0xf1f3ef)))
+                row.hover(|style| style.bg(theme::hover_surface()))
             })
             .on_click(move |_, _, cx| {
                 view.update(cx, |this, cx| this.set_quick_filter(filter, cx));
@@ -375,10 +500,10 @@ impl MemosDesktop {
                         .gap_2()
                         .items_center()
                         .border_b_1()
-                        .border_color(theme::color(0xe1b6b1))
-                        .bg(theme::color(0xfff4f2))
+                        .border_color(theme::error_border())
+                        .bg(theme::error_background())
                         .text_sm()
-                        .text_color(theme::color(0x9c3028))
+                        .text_color(theme::error_text())
                         .child(Icon::new(IconName::TriangleAlert).size_4())
                         .child(div().flex_1().min_w_0().child(error))
                         .child(
@@ -404,9 +529,9 @@ impl MemosDesktop {
                         .items_center()
                         .border_b_1()
                         .border_color(theme::line())
-                        .bg(theme::color(0xf1f6ef))
+                        .bg(theme::success_background())
                         .text_sm()
-                        .text_color(theme::color(0x285a38))
+                        .text_color(theme::success_text())
                         .child(Icon::new(IconName::CircleCheck).size_4())
                         .child(div().flex_1().min_w_0().child(notice))
                         .child(
@@ -463,6 +588,14 @@ impl MemosDesktop {
                 .unwrap_or_else(|| "Public activity for this user".into()),
             _ => String::new(),
         };
+        let profile_avatar = if self.route == Route::Profile {
+            self.profile_user
+                .as_ref()
+                .and_then(|user| user.name.as_deref())
+                .map(|name| self.user_avatar(name, 36.0))
+        } else {
+            None
+        };
         let is_timeline = self.route == Route::Timeline;
         let can_create = is_timeline && self.current_user.is_some();
         let loading = self.loading;
@@ -486,14 +619,20 @@ impl MemosDesktop {
                     .border_color(theme::line())
                     .bg(theme::paper())
                     .child(
-                        v_flex()
-                            .gap_0p5()
-                            .child(div().text_lg().font_semibold().child(title))
+                        h_flex()
+                            .items_center()
+                            .gap_3()
+                            .when_some(profile_avatar, |header, avatar| header.child(avatar))
                             .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::graphite())
-                                    .child(subtitle),
+                                v_flex()
+                                    .gap_0p5()
+                                    .child(div().text_lg().font_semibold().child(title))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .child(subtitle),
+                                    ),
                             ),
                     )
                     .child(
@@ -530,10 +669,10 @@ impl MemosDesktop {
                         .p_3()
                         .gap_2()
                         .border_1()
-                        .border_color(theme::color(0xe1b6b1))
-                        .bg(theme::color(0xfff4f2))
+                        .border_color(theme::error_border())
+                        .bg(theme::error_background())
                         .text_sm()
-                        .text_color(theme::color(0x9c3028))
+                        .text_color(theme::error_text())
                         .child(Icon::new(IconName::TriangleAlert).size_4())
                         .child(error),
                 )
@@ -686,6 +825,162 @@ impl MemosDesktop {
         })
     }
 
+    fn user_avatar(&self, user_name: &str, size: f32) -> AnyElement {
+        let user = self.known_users.get(user_name);
+        let label = user
+            .and_then(|user| user.display_name.clone())
+            .or_else(|| user.map(|user| user.username.clone()))
+            .unwrap_or_else(|| resource_id(user_name));
+        match self.user_avatars.get(user_name) {
+            Some(path) => Avatar::new()
+                .with_size(Size::Size(px(size)))
+                .src(path.clone())
+                .into_any_element(),
+            None => Avatar::new()
+                .with_size(Size::Size(px(size)))
+                .name(label)
+                .into_any_element(),
+        }
+    }
+
+    fn open_image_preview(
+        &self,
+        attachment: memos_api::types::Attachment,
+        path: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let view = cx.entity().clone();
+        let filename = attachment.filename.clone();
+        window.open_dialog(cx, move |dialog, _, _| {
+            let view = view.clone();
+            let attachment = attachment.clone();
+            dialog
+                .w(px(900.0))
+                .h(px(700.0))
+                .overlay_closable(true)
+                .title(filename.clone())
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .overflow_hidden()
+                        .bg(theme::subtle_surface())
+                        .child(img(path.clone()).size_full().object_fit(ObjectFit::Contain)),
+                )
+                .footer(move |_, _, _, _| {
+                    let view = view.clone();
+                    let attachment = attachment.clone();
+                    vec![
+                        Button::new("open-preview-original")
+                            .primary()
+                            .icon(IconName::ExternalLink)
+                            .label("Open original")
+                            .on_click(move |_, window, cx| {
+                                window.close_dialog(cx);
+                                view.update(cx, |this, cx| {
+                                    this.open_attachment_resource(attachment.clone(), cx);
+                                });
+                            }),
+                        Button::new("close-image-preview")
+                            .label("Close")
+                            .on_click(|_, window, cx| window.close_dialog(cx)),
+                    ]
+                })
+        });
+    }
+
+    fn attachment_gallery(
+        &self,
+        attachments: &[memos_api::types::Attachment],
+        max_items: usize,
+        tile_height: f32,
+        scope: &'static str,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let items = attachments
+            .iter()
+            .filter_map(|attachment| {
+                let name = attachment.name.as_ref()?;
+                let path = self.attachment_previews.get(name)?.clone();
+                Some((attachment.clone(), path))
+            })
+            .take(max_items)
+            .collect::<Vec<_>>();
+        if items.is_empty() {
+            return None;
+        }
+        let shown_items = items.len();
+        let total_images = attachments
+            .iter()
+            .filter(|attachment| attachment.type_.starts_with("image/"))
+            .count();
+        let hidden = total_images.saturating_sub(items.len());
+        let view = cx.entity().clone();
+        Some(
+            div()
+                .grid()
+                .grid_cols(3)
+                .gap_2()
+                .children(
+                    items
+                        .into_iter()
+                        .enumerate()
+                        .map(move |(ix, (attachment, path))| {
+                            let preview_view = view.clone();
+                            let preview_attachment = attachment.clone();
+                            let preview_path = path.clone();
+                            let preview_id = attachment
+                                .name
+                                .clone()
+                                .unwrap_or_else(|| format!("image-{ix}"));
+                            div()
+                                .id(gpui::SharedString::from(format!(
+                                    "{scope}-preview-{preview_id}"
+                                )))
+                                .relative()
+                                .h(px(tile_height))
+                                .min_w_0()
+                                .overflow_hidden()
+                                .rounded(px(4.0))
+                                .border_1()
+                                .border_color(theme::line())
+                                .cursor_pointer()
+                                .hover(|style| style.border_color(theme::cobalt()))
+                                .on_click(move |_, window, cx| {
+                                    cx.stop_propagation();
+                                    preview_view.update(cx, |this, cx| {
+                                        this.open_image_preview(
+                                            preview_attachment.clone(),
+                                            preview_path.clone(),
+                                            window,
+                                            cx,
+                                        );
+                                    });
+                                })
+                                .child(img(path).size_full().object_fit(ObjectFit::Cover))
+                                .when(ix + 1 == shown_items && hidden > 0, |item| {
+                                    item.child(
+                                        div()
+                                            .absolute()
+                                            .inset_0()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .bg(gpui::black().opacity(0.58))
+                                            .text_color(gpui::white())
+                                            .text_lg()
+                                            .font_semibold()
+                                            .child(format!("+{hidden}")),
+                                    )
+                                })
+                        }),
+                )
+                .into_any_element(),
+        )
+    }
+
     fn render_memo_row(&self, memo: Memo, cx: &mut Context<Self>) -> AnyElement {
         let name = memo.name.clone().unwrap_or_else(|| "memos/unknown".into());
         let selected = self.selected_memo_name.as_deref() == Some(name.as_str());
@@ -699,6 +994,13 @@ impl MemosDesktop {
         let excerpt = memo_excerpt(&memo.content, title.as_deref());
         let visibility = visibility_label(memo.visibility);
         let timestamp = memo.create_time;
+        let gallery = self.attachment_gallery(&memo.attachments, 6, 118.0, "timeline", cx);
+        let creator_user = creator
+            .as_deref()
+            .and_then(|name| self.known_users.get(name));
+        let creator_label = creator_user
+            .and_then(|user| user.display_name.clone())
+            .or_else(|| creator_user.map(|user| user.username.clone()));
 
         h_flex()
             .id(gpui::SharedString::from(format!("memo-{name}")))
@@ -706,9 +1008,9 @@ impl MemosDesktop {
             .border_b_1()
             .border_color(theme::line())
             .cursor_pointer()
-            .when(selected, |row| row.bg(theme::color(0xf0f4ff)))
+            .when(selected, |row| row.bg(theme::pale_cobalt()))
             .when(!selected, |row| {
-                row.hover(|style| style.bg(theme::color(0xf9faf7)))
+                row.hover(|style| style.bg(theme::hover_surface()))
             })
             .on_click(move |_, _, cx| {
                 view.update(cx, |this, cx| {
@@ -749,10 +1051,11 @@ impl MemosDesktop {
                         div()
                             .text_sm()
                             .line_height(px(22.0))
-                            .text_color(theme::color(0x30343a))
+                            .text_color(theme::ink())
                             .whitespace_normal()
                             .child(excerpt),
                     )
+                    .when_some(gallery, |body, gallery| body.child(gallery))
                     .when(!memo.tags.is_empty(), |body| {
                         body.child(h_flex().gap_3().flex_wrap().children(memo.tags.iter().map(
                             |tag| {
@@ -770,22 +1073,27 @@ impl MemosDesktop {
                             .text_xs()
                             .text_color(theme::graphite())
                             .when_some(creator, |metadata, creator| {
-                                let label = format!("@{}", resource_id(&creator));
+                                let label = creator_label
+                                    .clone()
+                                    .unwrap_or_else(|| format!("@{}", resource_id(&creator)));
+                                let avatar = self.user_avatar(&creator, 20.0);
                                 metadata.child(
-                                    Button::new(gpui::SharedString::from(format!(
-                                        "memo-creator-{creator}"
-                                    )))
-                                    .xsmall()
-                                    .ghost()
-                                    .icon(IconName::User)
-                                    .label(label)
-                                    .on_click(
-                                        move |_, _, cx| {
+                                    h_flex()
+                                        .id(gpui::SharedString::from(format!(
+                                            "memo-creator-{creator}"
+                                        )))
+                                        .items_center()
+                                        .gap_1()
+                                        .cursor_pointer()
+                                        .hover(|style| style.text_color(theme::cobalt_dark()))
+                                        .on_click(move |_, _, cx| {
+                                            cx.stop_propagation();
                                             profile_view.update(cx, |this, cx| {
                                                 this.open_user_profile(creator.clone(), cx);
                                             });
-                                        },
-                                    ),
+                                        })
+                                        .child(avatar)
+                                        .child(label),
                                 )
                             })
                             .child(visibility)
@@ -1241,12 +1549,7 @@ impl MemosDesktop {
                     .child(self.detail_tab_button(DetailTab::Files, cx)),
             )
             .when_some(detail_error, |panel, error| {
-                panel.child(
-                    div()
-                        .text_xs()
-                        .text_color(theme::color(0x9c3028))
-                        .child(error),
-                )
+                panel.child(div().text_xs().text_color(theme::error_text()).child(error))
             })
             .when(detail_loading, |panel| {
                 panel.child(
@@ -1326,6 +1629,8 @@ impl MemosDesktop {
             DetailTab::Content => {
                 let content = memo.content;
                 let tasks = markdown_tasks(&content);
+                let gallery =
+                    self.attachment_gallery(&self.detail.attachments, 9, 92.0, "detail", cx);
                 let link_metadata = self.link_metadata.values().cloned().collect::<Vec<_>>();
                 let task_view = cx.entity().clone();
                 let task_memo_name = name.clone();
@@ -1387,6 +1692,37 @@ impl MemosDesktop {
                                             });
                                         })
                                 })),
+                        )
+                    })
+                    .when_some(gallery, |panel, gallery| {
+                        panel.child(
+                            v_flex()
+                                .gap_2()
+                                .child(
+                                    h_flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .font_semibold()
+                                                .text_color(theme::graphite())
+                                                .child(format!(
+                                                    "ATTACHMENTS ({})",
+                                                    self.detail.attachments.len()
+                                                )),
+                                        )
+                                        .child(
+                                            Button::new("open-files-tab")
+                                                .xsmall()
+                                                .ghost()
+                                                .label("View all")
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.set_detail_tab(DetailTab::Files, cx);
+                                                })),
+                                        ),
+                                )
+                                .child(gallery),
                         )
                     })
                     .when(!link_metadata.is_empty(), |panel| {
@@ -2427,175 +2763,212 @@ impl MemosDesktop {
             self.library_attachments.clone()
         };
         let attachments_empty = attachments.is_empty();
+        let media_count = attachments
+            .iter()
+            .filter(|attachment| attachment.type_.starts_with("image/"))
+            .count();
+        let media_gallery = self.attachment_gallery(&attachments, 30, 148.0, "library", cx);
+        let file_attachments = attachments
+            .into_iter()
+            .filter(|attachment| !attachment.type_.starts_with("image/"))
+            .collect::<Vec<_>>();
         let has_more = self.next_attachment_page_token.is_some();
         let loading_more = self.loading_more;
         let upload_view = cx.entity().clone();
         let load_view = cx.entity().clone();
         let attachment_view = cx.entity().clone();
-        let content =
-            v_flex()
-                .gap_3()
-                .child(
-                    h_flex().justify_end().child(
-                        Button::new("upload-library-attachments")
-                            .primary()
-                            .icon(IconName::Plus)
-                            .label("Upload files")
-                            .disabled(self.current_user.is_none())
-                            .on_click(move |_, window, cx| {
-                                upload_view.update(cx, |this, cx| {
-                                    this.upload_library_attachments(window, cx);
-                                });
-                            }),
-                    ),
-                )
-                .child(
+        let content = v_flex()
+            .gap_3()
+            .child(
+                h_flex().justify_end().child(
+                    Button::new("upload-library-attachments")
+                        .primary()
+                        .icon(IconName::Plus)
+                        .label("Upload files")
+                        .disabled(self.current_user.is_none())
+                        .on_click(move |_, window, cx| {
+                            upload_view.update(cx, |this, cx| {
+                                this.upload_library_attachments(window, cx);
+                            });
+                        }),
+                ),
+            )
+            .when_some(media_gallery, |content, gallery| {
+                content.child(
                     v_flex()
-                        .border_1()
-                        .border_color(theme::line())
-                        .when(attachments_empty, |list| {
-                            list.child(empty_state(
-                                IconName::File,
-                                "No attachments",
-                                "Uploaded files will appear here.",
-                            ))
-                        })
-                        .children(attachments.into_iter().enumerate().map(
-                            move |(ix, attachment)| {
-                                let open_view = attachment_view.clone();
-                                let edit_view = attachment_view.clone();
-                                let delete_view = attachment_view.clone();
-                                let open_attachment = attachment.clone();
-                                let edit_attachment = attachment.clone();
-                                let name = attachment.name.clone().unwrap_or_default();
-                                let metadata = attachment_metadata(&attachment);
-                                let preview = self.attachment_previews.get(&name).cloned();
-                                let has_preview = preview.is_some();
-                                let can_open = external_attachment_url(&attachment).is_some()
-                                    || attachment.name.is_some();
-                                h_flex()
-                                    .min_h(px(58.0))
-                                    .px_4()
-                                    .items_center()
-                                    .justify_between()
-                                    .border_b_1()
-                                    .border_color(theme::line())
-                                    .child(
-                                        h_flex()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .gap_3()
-                                            .items_center()
-                                            .when_some(preview, |row, path| {
-                                                row.child(
-                                                    div()
-                                                        .size(px(44.0))
-                                                        .flex_shrink_0()
-                                                        .overflow_hidden()
-                                                        .rounded(px(3.0))
-                                                        .child(
-                                                            img(path)
-                                                                .size_full()
-                                                                .object_fit(ObjectFit::Cover),
-                                                        ),
-                                                )
-                                            })
-                                            .when(!has_preview, |row| {
-                                                row.child(Icon::new(IconName::File).size_4())
-                                            })
-                                            .child(
-                                                v_flex()
-                                                    .min_w_0()
-                                                    .gap_1()
+                        .gap_2()
+                        .child(
+                            h_flex()
+                                .items_center()
+                                .justify_between()
+                                .child(panel_label("MEDIA"))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme::graphite())
+                                        .child(format!("{media_count} images")),
+                                ),
+                        )
+                        .child(gallery),
+                )
+            })
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(panel_label("DOCUMENTS AND OTHER FILES"))
+                    .when(attachments_empty, |list| {
+                        list.child(empty_state(
+                            IconName::File,
+                            "No attachments",
+                            "Uploaded files will appear here.",
+                        ))
+                    })
+                    .when(file_attachments.is_empty() && !attachments_empty, |list| {
+                        list.child(
+                            div()
+                                .p_4()
+                                .text_xs()
+                                .text_color(theme::graphite())
+                                .child("All loaded attachments are shown in Media."),
+                        )
+                    })
+                    .children(file_attachments.into_iter().enumerate().map(
+                        move |(ix, attachment)| {
+                            let open_view = attachment_view.clone();
+                            let edit_view = attachment_view.clone();
+                            let delete_view = attachment_view.clone();
+                            let open_attachment = attachment.clone();
+                            let edit_attachment = attachment.clone();
+                            let name = attachment.name.clone().unwrap_or_default();
+                            let metadata = attachment_metadata(&attachment);
+                            let preview = self.attachment_previews.get(&name).cloned();
+                            let has_preview = preview.is_some();
+                            let can_open = external_attachment_url(&attachment).is_some()
+                                || attachment.name.is_some();
+                            h_flex()
+                                .min_h(px(58.0))
+                                .px_4()
+                                .items_center()
+                                .justify_between()
+                                .border_b_1()
+                                .border_color(theme::line())
+                                .child(
+                                    h_flex()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .gap_3()
+                                        .items_center()
+                                        .when_some(preview, |row, path| {
+                                            row.child(
+                                                div()
+                                                    .size(px(44.0))
+                                                    .flex_shrink_0()
+                                                    .overflow_hidden()
+                                                    .rounded(px(3.0))
                                                     .child(
-                                                        div()
-                                                            .text_sm()
-                                                            .overflow_hidden()
-                                                            .text_ellipsis()
-                                                            .child(attachment.filename),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .font_family(theme::mono_family())
-                                                            .text_xs()
-                                                            .text_color(theme::graphite())
-                                                            .child(metadata),
+                                                        img(path)
+                                                            .size_full()
+                                                            .object_fit(ObjectFit::Cover),
                                                     ),
-                                            ),
-                                    )
-                                    .child(
-                                        h_flex()
-                                            .gap_1()
-                                            .when(can_open, |actions| {
-                                                actions.child(
-                                                    Button::new(("open-library-attachment", ix))
-                                                        .ghost()
-                                                        .icon(IconName::ExternalLink)
-                                                        .tooltip("Open attachment")
-                                                        .on_click(move |_, _, cx| {
-                                                            open_view.update(cx, |this, cx| {
-                                                                this.open_attachment_resource(
-                                                                    open_attachment.clone(),
-                                                                    cx,
-                                                                );
-                                                            });
-                                                        }),
+                                            )
+                                        })
+                                        .when(!has_preview, |row| {
+                                            row.child(Icon::new(IconName::File).size_4())
+                                        })
+                                        .child(
+                                            v_flex()
+                                                .min_w_0()
+                                                .gap_1()
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .overflow_hidden()
+                                                        .text_ellipsis()
+                                                        .child(attachment.filename),
                                                 )
-                                            })
-                                            .child(
-                                                Button::new(("edit-library-attachment", ix))
+                                                .child(
+                                                    div()
+                                                        .font_family(theme::mono_family())
+                                                        .text_xs()
+                                                        .text_color(theme::graphite())
+                                                        .child(metadata),
+                                                ),
+                                        ),
+                                )
+                                .child(
+                                    h_flex()
+                                        .gap_1()
+                                        .when(can_open, |actions| {
+                                            actions.child(
+                                                Button::new(("open-library-attachment", ix))
                                                     .ghost()
-                                                    .icon(IconName::Replace)
-                                                    .tooltip("Edit attachment JSON")
-                                                    .on_click(move |_, window, cx| {
-                                                        edit_view.update(cx, |this, cx| {
-                                                            this.open_json_editor(
-                                                                "Edit attachment",
-                                                                edit_attachment.clone(),
-                                                                window,
+                                                    .icon(IconName::ExternalLink)
+                                                    .tooltip("Open attachment")
+                                                    .on_click(move |_, _, cx| {
+                                                        open_view.update(cx, |this, cx| {
+                                                            this.open_attachment_resource(
+                                                                open_attachment.clone(),
                                                                 cx,
-                                                                |this, attachment, cx| {
-                                                                    this.save_attachment_resource(
-                                                                        attachment, cx,
-                                                                    );
-                                                                },
                                                             );
                                                         });
                                                     }),
                                             )
-                                            .child(
-                                                Button::new(("delete-library-attachment", ix))
-                                                    .danger()
-                                                    .icon(IconName::Delete)
-                                                    .tooltip("Delete attachment")
-                                                    .on_click(move |_, _, cx| {
-                                                        delete_view.update(cx, |this, cx| {
-                                                            this.delete_attachment_resource(
-                                                                name.clone(),
-                                                                cx,
-                                                            );
-                                                        });
-                                                    }),
-                                            ),
-                                    )
-                            },
-                        )),
+                                        })
+                                        .child(
+                                            Button::new(("edit-library-attachment", ix))
+                                                .ghost()
+                                                .icon(IconName::Replace)
+                                                .tooltip("Edit attachment JSON")
+                                                .on_click(move |_, window, cx| {
+                                                    edit_view.update(cx, |this, cx| {
+                                                        this.open_json_editor(
+                                                            "Edit attachment",
+                                                            edit_attachment.clone(),
+                                                            window,
+                                                            cx,
+                                                            |this, attachment, cx| {
+                                                                this.save_attachment_resource(
+                                                                    attachment, cx,
+                                                                );
+                                                            },
+                                                        );
+                                                    });
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new(("delete-library-attachment", ix))
+                                                .danger()
+                                                .icon(IconName::Delete)
+                                                .tooltip("Delete attachment")
+                                                .on_click(move |_, _, cx| {
+                                                    delete_view.update(cx, |this, cx| {
+                                                        this.delete_attachment_resource(
+                                                            name.clone(),
+                                                            cx,
+                                                        );
+                                                    });
+                                                }),
+                                        ),
+                                )
+                        },
+                    )),
+            )
+            .when(has_more, |content| {
+                content.child(
+                    h_flex().justify_center().child(
+                        Button::new("load-more-attachments")
+                            .outline()
+                            .label("Load more")
+                            .loading(loading_more)
+                            .on_click(move |_, _, cx| {
+                                load_view.update(cx, |this, cx| {
+                                    this.load_more_attachments(cx);
+                                });
+                            }),
+                    ),
                 )
-                .when(has_more, |content| {
-                    content.child(
-                        h_flex().justify_center().child(
-                            Button::new("load-more-attachments")
-                                .outline()
-                                .label("Load more")
-                                .loading(loading_more)
-                                .on_click(move |_, _, cx| {
-                                    load_view.update(cx, |this, cx| {
-                                        this.load_more_attachments(cx);
-                                    });
-                                }),
-                        ),
-                    )
-                });
+            });
         module_page("Attachments", "Instance file library", content)
     }
 
@@ -3171,6 +3544,10 @@ impl MemosDesktop {
             .unwrap_or_else(|| user.username.clone());
         let stats = self.account_resources.stats.clone().unwrap_or_default();
         let identities = self.account_resources.identities.clone();
+        let avatar = user
+            .name
+            .as_deref()
+            .map(|name| self.user_avatar(name, 44.0));
         v_flex()
             .gap_4()
             .child(
@@ -3184,14 +3561,22 @@ impl MemosDesktop {
                             .items_center()
                             .justify_between()
                             .child(
-                                v_flex()
-                                    .gap_1()
-                                    .child(div().text_sm().font_semibold().child(display_name))
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .when_some(avatar, |profile, avatar| profile.child(avatar))
                                     .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(theme::graphite())
-                                            .child(format!("@{}", user.username)),
+                                        v_flex()
+                                            .gap_1()
+                                            .child(
+                                                div().text_sm().font_semibold().child(display_name),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .text_color(theme::graphite())
+                                                    .child(format!("@{}", user.username)),
+                                            ),
                                     ),
                             )
                             .child(
@@ -3308,52 +3693,93 @@ impl MemosDesktop {
         let settings = self.account_resources.settings.clone();
         let view = cx.entity().clone();
         v_flex()
-            .border_1()
-            .border_color(theme::line())
-            .when(settings.is_empty(), |panel| {
-                panel.child(empty_state(
-                    IconName::Settings2,
-                    "No user settings",
-                    "This Memos instance returned no user settings.",
-                ))
-            })
-            .children(settings.into_iter().enumerate().map(move |(ix, setting)| {
-                let view = view.clone();
-                let edit_setting = setting.clone();
-                let name = setting.name.clone().unwrap_or_default();
-                h_flex()
-                    .min_h(px(60.0))
-                    .px_4()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
+            .gap_4()
+            .child(
+                v_flex()
+                    .border_1()
                     .border_color(theme::line())
+                    .child(panel_label("APPEARANCE"))
                     .child(
-                        div()
-                            .font_family(theme::mono_family())
-                            .text_sm()
-                            .child(resource_id(&name)),
-                    )
-                    .child(
-                        Button::new(("edit-user-setting", ix))
-                            .ghost()
-                            .icon(IconName::Replace)
-                            .label("Edit")
-                            .on_click(move |_, window, cx| {
-                                view.update(cx, |this, cx| {
-                                    this.open_json_editor(
-                                        "Edit user setting",
-                                        edit_setting.clone(),
-                                        window,
-                                        cx,
-                                        |this, setting, cx| {
-                                            this.save_user_setting_resource(setting, cx);
-                                        },
-                                    );
-                                });
+                        h_flex().p_3().gap_2().flex_wrap().children(
+                            [
+                                (ThemePreference::System, IconName::Palette),
+                                (ThemePreference::Light, IconName::Sun),
+                                (ThemePreference::Dark, IconName::Moon),
+                            ]
+                            .into_iter()
+                            .map(|(preference, icon)| {
+                                let view = cx.entity().clone();
+                                Button::new(gpui::SharedString::from(format!(
+                                    "theme-{:?}",
+                                    preference
+                                )))
+                                .outline()
+                                .when(self.theme_preference == preference, |button| {
+                                    button.primary()
+                                })
+                                .icon(icon)
+                                .label(preference.label())
+                                .on_click(
+                                    move |_, window, cx| {
+                                        view.update(cx, |this, cx| {
+                                            this.set_theme_preference(preference, window, cx);
+                                        });
+                                    },
+                                )
                             }),
-                    )
-            }))
+                        ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(panel_label("SERVER SETTINGS"))
+                    .when(settings.is_empty(), |panel| {
+                        panel.child(empty_state(
+                            IconName::Settings2,
+                            "No user settings",
+                            "This Memos instance returned no user settings.",
+                        ))
+                    })
+                    .children(settings.into_iter().enumerate().map(move |(ix, setting)| {
+                        let view = view.clone();
+                        let edit_setting = setting.clone();
+                        let name = setting.name.clone().unwrap_or_default();
+                        h_flex()
+                            .min_h(px(60.0))
+                            .px_4()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::line())
+                            .child(
+                                div()
+                                    .font_family(theme::mono_family())
+                                    .text_sm()
+                                    .child(resource_id(&name)),
+                            )
+                            .child(
+                                Button::new(("edit-user-setting", ix))
+                                    .ghost()
+                                    .icon(IconName::Replace)
+                                    .label("Edit")
+                                    .on_click(move |_, window, cx| {
+                                        view.update(cx, |this, cx| {
+                                            this.open_json_editor(
+                                                "Edit user setting",
+                                                edit_setting.clone(),
+                                                window,
+                                                cx,
+                                                |this, setting, cx| {
+                                                    this.save_user_setting_resource(setting, cx);
+                                                },
+                                            );
+                                        });
+                                    }),
+                            )
+                    })),
+            )
             .into_any_element()
     }
 
@@ -3984,25 +4410,6 @@ impl MemosDesktop {
                     ),
                 ),
         )
-    }
-
-    fn user_initials(&self) -> String {
-        let source = self
-            .current_user
-            .as_ref()
-            .and_then(|user| user.display_name.as_deref())
-            .or_else(|| {
-                self.current_user
-                    .as_ref()
-                    .map(|user| user.username.as_str())
-            })
-            .unwrap_or("G");
-        source
-            .split_whitespace()
-            .filter_map(|part| part.chars().next())
-            .take(2)
-            .collect::<String>()
-            .to_uppercase()
     }
 }
 

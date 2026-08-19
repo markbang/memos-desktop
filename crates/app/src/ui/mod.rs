@@ -26,7 +26,8 @@ use tokio::runtime::Runtime;
 use crate::{
     api::{ApiSession, MemoDetailData},
     config::AppConfig,
-    demo,
+    credentials, demo,
+    theme::{self, ThemePreference},
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -176,6 +177,8 @@ pub struct MemosDesktop {
     session: Option<ApiSession>,
     instance: Option<InstanceProfile>,
     current_user: Option<User>,
+    known_users: HashMap<String, User>,
+    user_avatars: HashMap<String, PathBuf>,
     profile_user: Option<User>,
     profile_stats: Option<UserStats>,
     memos: Vec<Memo>,
@@ -198,6 +201,7 @@ pub struct MemosDesktop {
     account_resources: AccountResources,
     admin_resources: AdminResources,
     settings_section: SettingsSection,
+    theme_preference: ThemePreference,
     module_loading: bool,
     loading_more: bool,
 
@@ -218,7 +222,7 @@ impl MemosDesktop {
         let server_url = if config.server_url.is_empty() {
             "http://localhost:5230".to_string()
         } else {
-            config.server_url
+            config.server_url.clone()
         };
 
         let server_input = cx.new(|cx| {
@@ -229,7 +233,7 @@ impl MemosDesktop {
         let username_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Username")
-                .default_value(config.username)
+                .default_value(config.username.clone())
         });
         let password_input = cx.new(|cx| {
             InputState::new(window, cx)
@@ -252,11 +256,17 @@ impl MemosDesktop {
         let comment_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Add a comment..."));
 
-        let _subscriptions = vec![
+        let mut _subscriptions = vec![
             cx.subscribe_in(&search_input, window, Self::on_search_input),
             cx.subscribe_in(&composer_input, window, Self::on_composer_input),
             cx.subscribe_in(&comment_input, window, Self::on_comment_input),
         ];
+        _subscriptions.push(cx.observe_window_appearance(window, |this, window, cx| {
+            if this.theme_preference == ThemePreference::System {
+                theme::apply(ThemePreference::System, Some(window), cx);
+                cx.notify();
+            }
+        }));
 
         let runtime = Arc::new(Runtime::new().expect("failed to create network runtime"));
         let (connected, instance, current_user, memos, selected_memo_name) = if demo_mode {
@@ -273,7 +283,7 @@ impl MemosDesktop {
             (false, None, None, Vec::new(), None)
         };
 
-        Self {
+        let mut desktop = Self {
             runtime,
             live_cancel: None,
             demo_mode,
@@ -288,6 +298,8 @@ impl MemosDesktop {
             session: None,
             instance,
             current_user,
+            known_users: HashMap::new(),
+            user_avatars: HashMap::new(),
             profile_user: None,
             profile_stats: None,
             memos,
@@ -310,6 +322,7 @@ impl MemosDesktop {
             account_resources: AccountResources::default(),
             admin_resources: AdminResources::default(),
             settings_section: SettingsSection::default(),
+            theme_preference: config.theme,
             module_loading: false,
             loading_more: false,
             server_input,
@@ -321,7 +334,254 @@ impl MemosDesktop {
             composer_input,
             comment_input,
             _subscriptions,
+        };
+        if !demo_mode && config.auto_login {
+            desktop.start_auto_login(config, cx);
         }
+        desktop
+    }
+
+    fn start_auto_login(&mut self, config: AppConfig, cx: &mut Context<Self>) {
+        if config.server_url.trim().is_empty() || config.username.trim().is_empty() {
+            return;
+        }
+        let server_url = config.server_url;
+        let username = config.username;
+        let runtime = self.runtime.clone();
+        self.loading = true;
+        self.notice = Some("Signing in with saved credentials...".into());
+        cx.spawn(async move |this, cx| {
+            let password = runtime
+                .spawn_blocking({
+                    let server_url = server_url.clone();
+                    let username = username.clone();
+                    move || credentials::load_password(&server_url, &username)
+                })
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|result| result);
+            let result = match password {
+                Ok(Some(password)) => {
+                    let session = ApiSession::new(&server_url, runtime.clone());
+                    match session {
+                        Ok(session) => async {
+                            let profile = session.instance_profile().await?;
+                            let user = session.sign_in_password(username.clone(), password).await?;
+                            let filter = user
+                                .name
+                                .as_deref()
+                                .map(|name| format!("creator == \"{}\"", escape_cel_string(name)));
+                            let response = session
+                                .list_memos_page(
+                                    filter,
+                                    Some("pinned desc, create_time desc".into()),
+                                    50,
+                                    None,
+                                    false,
+                                )
+                                .await?;
+                            Ok::<_, crate::api::ApiError>((session, profile, user, response))
+                        }
+                        .await
+                        .map_err(|error| error.to_string()),
+                        Err(error) => Err(error.to_string()),
+                    }
+                }
+                Ok(None) => Err("No saved password was found.".into()),
+                Err(error) => Err(format!(
+                    "Could not read the system credential store: {error}"
+                )),
+            };
+
+            _ = this.update(cx, |this, cx| {
+                this.loading = false;
+                this.notice = None;
+                match result {
+                    Ok((session, profile, user, response)) => {
+                        this.apply_connected_session(session, profile, Some(user), response, cx);
+                    }
+                    Err(error) => {
+                        this.persist_connection(server_url.clone(), username.clone(), false);
+                        this.error = Some(format!("Automatic sign-in failed. {error}"));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn apply_connected_session(
+        &mut self,
+        session: ApiSession,
+        profile: InstanceProfile,
+        user: Option<User>,
+        response: memos_api::types::ListMemosResponse,
+        cx: &mut Context<Self>,
+    ) {
+        self.connected = true;
+        self.error = None;
+        self.next_memo_page_token = non_empty(response.next_page_token);
+        self.selected_memo_name = response.memos.first().and_then(|memo| memo.name.clone());
+        self.memos = response.memos;
+        self.instance = Some(profile);
+        self.current_user = user;
+        self.session = Some(session);
+        if let Some(user) = self.current_user.clone()
+            && let Some(name) = user.name.clone()
+        {
+            self.known_users.insert(name, user);
+            self.start_live_updates(cx);
+        }
+        self.route = Route::Timeline;
+        if let Some(name) = self.selected_memo_name.clone() {
+            self.load_detail(name, cx);
+        }
+        self.refresh_memo_assets(cx);
+    }
+
+    fn refresh_memo_assets(&mut self, cx: &mut Context<Self>) {
+        let Some(session) = self.session.clone() else {
+            return;
+        };
+        let request_session = session.clone();
+        let creators = self
+            .memos
+            .iter()
+            .filter_map(|memo| memo.creator.clone())
+            .chain(
+                self.current_user
+                    .as_ref()
+                    .and_then(|user| user.name.clone()),
+            )
+            .collect::<Vec<_>>();
+        let attachments = self
+            .memos
+            .iter()
+            .take(24)
+            .flat_map(|memo| {
+                memo.attachments
+                    .iter()
+                    .filter(|attachment| is_previewable_image(attachment))
+                    .take(6)
+                    .cloned()
+            })
+            .take(72)
+            .collect::<Vec<_>>();
+        cx.spawn(async move |this, cx| {
+            let users = session.batch_get_users(creators).await.unwrap_or_default();
+            let avatars = cache_user_avatars(&session, &users).await;
+            let previews = cache_attachment_previews(&session, &attachments).await;
+            _ = this.update(cx, |this, cx| {
+                if !this
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session.same_session(&request_session))
+                {
+                    return;
+                }
+                for user in users {
+                    if let Some(name) = user.name.clone() {
+                        this.known_users.insert(name, user);
+                    }
+                }
+                this.user_avatars.extend(avatars);
+                this.attachment_previews.extend(previews);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn persist_connection(&self, server_url: String, username: String, auto_login: bool) {
+        let _ = AppConfig {
+            server_url,
+            username,
+            auto_login,
+            theme: self.theme_preference,
+        }
+        .save();
+    }
+
+    fn remember_password(
+        &mut self,
+        server_url: String,
+        username: String,
+        password: String,
+        cx: &mut Context<Self>,
+    ) {
+        let runtime = self.runtime.clone();
+        cx.spawn(async move |this, cx| {
+            let result = runtime
+                .spawn_blocking(move || {
+                    credentials::save_password(&server_url, &username, &password)
+                })
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|result| result);
+            if let Err(error) = result {
+                _ = this.update(cx, |this, cx| {
+                    this.notice = Some(format!(
+                        "Signed in, but the system credential store could not save the password: {error}"
+                    ));
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn forget_saved_login(&mut self, cx: &mut Context<Self>) {
+        let server_url = self
+            .session
+            .as_ref()
+            .map(|session| session.base_url().to_string())
+            .unwrap_or_else(|| self.server_input.read(cx).value().to_string());
+        let username = self
+            .current_user
+            .as_ref()
+            .map(|user| user.username.clone())
+            .unwrap_or_else(|| self.username_input.read(cx).value().to_string());
+        self.persist_connection(server_url.clone(), username.clone(), false);
+        let runtime = self.runtime.clone();
+        cx.spawn(async move |this, cx| {
+            let result = runtime
+                .spawn_blocking(move || credentials::delete_password(&server_url, &username))
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|result| result);
+            _ = this.update(cx, |this, cx| {
+                this.notice = Some(match result {
+                    Ok(()) => "Saved login removed from the system credential store.".into(),
+                    Err(error) => format!("Could not remove the saved login: {error}"),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn set_theme_preference(
+        &mut self,
+        preference: ThemePreference,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.theme_preference = preference;
+        theme::apply(preference, Some(window), cx);
+        let server_url = self
+            .session
+            .as_ref()
+            .map(|session| session.base_url().to_string())
+            .unwrap_or_else(|| self.server_input.read(cx).value().to_string());
+        let username = self
+            .current_user
+            .as_ref()
+            .map(|user| user.username.clone())
+            .unwrap_or_else(|| self.username_input.read(cx).value().to_string());
+        let auto_login = AppConfig::load().auto_login;
+        self.persist_connection(server_url, username, auto_login);
+        cx.notify();
     }
 
     fn on_search_input(
@@ -1133,25 +1393,9 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((user, response)) => {
-                        this.connected = true;
-                        this.instance = Some(profile);
-                        this.current_user = Some(user.clone());
-                        this.session = Some(session);
-                        this.start_live_updates(cx);
-                        this.memos = response.memos;
-                        this.next_memo_page_token = non_empty(response.next_page_token);
-                        this.selected_memo_name =
-                            this.memos.first().and_then(|memo| memo.name.clone());
-                        this.route = Route::Timeline;
-                        this.error = None;
-                        if let Some(name) = this.selected_memo_name.clone() {
-                            this.load_detail(name, cx);
-                        }
-                        let _ = AppConfig {
-                            server_url,
-                            username: user.username,
-                        }
-                        .save();
+                        let username = user.username.clone();
+                        this.apply_connected_session(session, profile, Some(user), response, cx);
+                        this.persist_connection(server_url, username, false);
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -1346,7 +1590,9 @@ impl MemosDesktop {
                         username: username.clone(),
                     })
                     .await?;
-                let user = session.sign_in_password(username.clone(), password).await?;
+                let user = session
+                    .sign_in_password(username.clone(), password.clone())
+                    .await?;
                 let filter = user
                     .name
                     .as_deref()
@@ -1369,25 +1615,9 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((session, profile, user, response)) => {
-                        this.connected = true;
-                        this.error = None;
-                        this.next_memo_page_token = non_empty(response.next_page_token);
-                        this.selected_memo_name =
-                            response.memos.first().and_then(|memo| memo.name.clone());
-                        this.memos = response.memos;
-                        this.instance = Some(profile);
-                        this.current_user = Some(user);
-                        this.session = Some(session);
-                        this.start_live_updates(cx);
-                        this.route = Route::Timeline;
-                        if let Some(name) = this.selected_memo_name.clone() {
-                            this.load_detail(name, cx);
-                        }
-                        let _ = AppConfig {
-                            server_url,
-                            username,
-                        }
-                        .save();
+                        this.apply_connected_session(session, profile, Some(user), response, cx);
+                        this.persist_connection(server_url.clone(), username.clone(), true);
+                        this.remember_password(server_url, username, password, cx);
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -1436,7 +1666,9 @@ impl MemosDesktop {
                 } else {
                     Some(match auth_mode {
                         AuthMode::Password => {
-                            session.sign_in_password(username.clone(), password).await?
+                            session
+                                .sign_in_password(username.clone(), password.clone())
+                                .await?
                         }
                         AuthMode::AccessToken => session.sign_in_with_access_token(token).await?,
                     })
@@ -1464,27 +1696,12 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((session, profile, user, response)) => {
-                        this.connected = true;
-                        this.error = None;
-                        this.next_memo_page_token = non_empty(response.next_page_token);
-                        this.selected_memo_name =
-                            response.memos.first().and_then(|memo| memo.name.clone());
-                        this.memos = response.memos;
-                        this.instance = Some(profile);
-                        this.current_user = user;
-                        this.session = Some(session);
-                        if this.current_user.is_some() {
-                            this.start_live_updates(cx);
+                        this.apply_connected_session(session, profile, user, response, cx);
+                        let auto_login = !anonymous && auth_mode == AuthMode::Password;
+                        this.persist_connection(server_url.clone(), username.clone(), auto_login);
+                        if auto_login {
+                            this.remember_password(server_url, username, password, cx);
                         }
-                        this.route = Route::Timeline;
-                        if let Some(name) = this.selected_memo_name.clone() {
-                            this.load_detail(name, cx);
-                        }
-                        let _ = AppConfig {
-                            server_url,
-                            username,
-                        }
-                        .save();
                     }
                     Err(error) => {
                         this.error = Some(error.to_string());
@@ -1566,6 +1783,8 @@ impl MemosDesktop {
         self.active_server_filter = None;
         self.instance = None;
         self.current_user = None;
+        self.known_users.clear();
+        self.user_avatars.clear();
         self.profile_user = None;
         self.profile_stats = None;
         self.memos.clear();
@@ -1637,6 +1856,9 @@ impl MemosDesktop {
                 this.module_loading = false;
                 match result {
                     Ok((user, stats, response)) => {
+                        if let Some(name) = user.name.clone() {
+                            this.known_users.insert(name, user.clone());
+                        }
                         this.profile_user = Some(user);
                         this.profile_stats = Some(stats);
                         this.memos = response.memos;
@@ -1651,6 +1873,7 @@ impl MemosDesktop {
                             this.detail = MemoDetailData::default();
                             this.detail_error = None;
                         }
+                        this.refresh_memo_assets(cx);
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -1973,11 +2196,8 @@ impl MemosDesktop {
                         {
                             this.admin_resources.users[index] = user.clone();
                         }
-                        let _ = AppConfig {
-                            server_url,
-                            username: user.username.clone(),
-                        }
-                        .save();
+                        let auto_login = AppConfig::load().auto_login;
+                        this.persist_connection(server_url, user.username.clone(), auto_login);
                         this.current_user = Some(user);
                         this.error = None;
                     }
@@ -2576,6 +2796,7 @@ impl MemosDesktop {
                             this.load_detail(name, cx);
                         }
                         this.error = None;
+                        this.refresh_memo_assets(cx);
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -2612,6 +2833,7 @@ impl MemosDesktop {
                         this.next_memo_page_token = non_empty(response.next_page_token);
                         this.memos.extend(response.memos);
                         this.error = None;
+                        this.refresh_memo_assets(cx);
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -2988,14 +3210,7 @@ async fn cache_attachment_previews(
 ) -> HashMap<String, PathBuf> {
     let downloads = attachments
         .iter()
-        .filter(|attachment| {
-            external_attachment_url(attachment).is_none()
-                && attachment.type_.starts_with("image/")
-                && !matches!(
-                    attachment.type_.as_str(),
-                    "image/vnd.adobe.photoshop" | "image/x-photoshop" | "image/photoshop"
-                )
-        })
+        .filter(|attachment| is_previewable_image(attachment))
         .cloned()
         .map(|attachment| {
             let session = session.clone();
@@ -3013,6 +3228,34 @@ async fn cache_attachment_previews(
         .into_iter()
         .flatten()
         .collect()
+}
+
+async fn cache_user_avatars(session: &ApiSession, users: &[User]) -> HashMap<String, PathBuf> {
+    let downloads = users.iter().cloned().map(|user| {
+        let session = session.clone();
+        async move {
+            let name = user.name.clone()?;
+            session
+                .cache_user_avatar(user)
+                .await
+                .ok()
+                .flatten()
+                .map(|path| (name, path))
+        }
+    });
+    futures::future::join_all(downloads)
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+fn is_previewable_image(attachment: &Attachment) -> bool {
+    attachment.type_.starts_with("image/")
+        && !matches!(
+            attachment.type_.as_str(),
+            "image/vnd.adobe.photoshop" | "image/x-photoshop" | "image/photoshop"
+        )
 }
 
 fn external_attachment_url(attachment: &Attachment) -> Option<String> {
