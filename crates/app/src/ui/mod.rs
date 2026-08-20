@@ -410,10 +410,10 @@ impl MemosDesktop {
                         this.apply_connected_session(session, profile, Some(user), response, cx);
                     }
                     Err(error) => {
+                        this.error = Some(format!("Automatic sign-in failed. {error}"));
                         if missing_saved_password {
                             this.persist_connection(server_url.clone(), username.clone(), false);
                         }
-                        this.error = Some(format!("Automatic sign-in failed. {error}"));
                     }
                 }
                 cx.notify();
@@ -521,14 +521,21 @@ impl MemosDesktop {
         .detach();
     }
 
-    fn persist_connection(&self, server_url: String, username: String, auto_login: bool) {
-        let _ = AppConfig {
+    fn persist_connection(&mut self, server_url: String, username: String, auto_login: bool) {
+        if let Err(error) = (AppConfig {
             server_url,
             username,
             auto_login,
             theme: self.theme_preference,
+        })
+        .save()
+        {
+            let message = format!("Could not save connection settings: {error}");
+            self.error = Some(match self.error.take() {
+                Some(existing) => format!("{existing}\n{message}"),
+                None => message,
+            });
         }
-        .save();
     }
 
     fn remember_password(
@@ -570,30 +577,61 @@ impl MemosDesktop {
     }
 
     fn forget_saved_login(&mut self, cx: &mut Context<Self>) {
-        let server_url = self
+        self.remove_saved_login(true, cx);
+    }
+
+    fn clear_saved_login_for_auth(&mut self, cx: &mut Context<Self>) {
+        self.remove_saved_login(false, cx);
+    }
+
+    fn remove_saved_login(&mut self, announce_success: bool, cx: &mut Context<Self>) {
+        let current_server_url = self
             .session
             .as_ref()
             .map(|session| session.base_url().to_string())
             .unwrap_or_else(|| self.server_input.read(cx).value().to_string());
-        let username = self
+        let current_username = self
             .current_user
             .as_ref()
             .map(|user| user.username.clone())
             .unwrap_or_else(|| self.username_input.read(cx).value().to_string());
-        self.persist_connection(server_url.clone(), username.clone(), false);
+        let config = AppConfig::load();
+        let credential_server_url = if config.server_url.trim().is_empty() {
+            current_server_url.clone()
+        } else {
+            config.server_url
+        };
+        let credential_username = if config.username.trim().is_empty() {
+            current_username.clone()
+        } else {
+            config.username
+        };
+        self.persist_connection(current_server_url, current_username, false);
+        self.saved_login_available = false;
+        cx.notify();
         let runtime = self.runtime.clone();
         cx.spawn(async move |this, cx| {
             let result = runtime
-                .spawn_blocking(move || credentials::delete_password(&server_url, &username))
+                .spawn_blocking(move || {
+                    credentials::delete_password(&credential_server_url, &credential_username)
+                })
                 .await
                 .map_err(|error| error.to_string())
                 .and_then(|result| result);
             _ = this.update(cx, |this, cx| {
-                this.saved_login_available = false;
-                this.notice = Some(match result {
-                    Ok(()) => "Saved login removed from the system credential store.".into(),
-                    Err(error) => format!("Could not remove the saved login: {error}"),
-                });
+                match result {
+                    Ok(()) if announce_success => {
+                        this.notice =
+                            Some("Saved login removed from the system credential store.".into());
+                    }
+                    Ok(()) => {}
+                    Err(error) => {
+                        if announce_success {
+                            this.saved_login_available = true;
+                        }
+                        this.notice = Some(format!("Could not remove the saved login: {error}"));
+                    }
+                }
                 cx.notify();
             });
         })
@@ -1361,14 +1399,7 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((session, profile, providers)) if !providers.is_empty() => {
-                        this.show_sso_provider_dialog(
-                            server_url.clone(),
-                            session,
-                            profile,
-                            providers,
-                            window,
-                            cx,
-                        );
+                        this.show_sso_provider_dialog(session, profile, providers, window, cx);
                     }
                     Ok(_) => this.error = Some("This instance has no SSO providers.".into()),
                     Err(error) => this.error = Some(error.to_string()),
@@ -1381,7 +1412,6 @@ impl MemosDesktop {
 
     fn begin_sso(
         &mut self,
-        server_url: String,
         session: ApiSession,
         profile: InstanceProfile,
         provider: IdentityProvider,
@@ -1432,8 +1462,9 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((user, response)) => {
+                        let server_url = session.base_url().to_string();
                         let username = user.username.clone();
-                        this.saved_login_available = false;
+                        this.clear_saved_login_for_auth(cx);
                         this.apply_connected_session(session, profile, Some(user), response, cx);
                         this.persist_connection(server_url, username, false);
                     }
@@ -1735,12 +1766,17 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((session, profile, user, response)) => {
-                        this.apply_connected_session(session, profile, user, response, cx);
                         if !anonymous && auth_mode == AuthMode::Password {
+                            this.apply_connected_session(session, profile, user, response, cx);
                             this.remember_password(server_url, username, password, cx);
                         } else {
-                            this.forget_saved_login(cx);
-                            this.persist_connection(server_url, username, false);
+                            let persisted_username = user
+                                .as_ref()
+                                .map(|user| user.username.clone())
+                                .unwrap_or_else(|| username.clone());
+                            this.clear_saved_login_for_auth(cx);
+                            this.apply_connected_session(session, profile, user, response, cx);
+                            this.persist_connection(server_url, persisted_username, false);
                         }
                     }
                     Err(error) => {

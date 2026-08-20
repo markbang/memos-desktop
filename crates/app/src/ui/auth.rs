@@ -16,7 +16,6 @@ use crate::{api::ApiSession, theme};
 impl MemosDesktop {
     pub(super) fn show_sso_provider_dialog(
         &self,
-        server_url: String,
         session: ApiSession,
         profile: memos_api::types::InstanceProfile,
         providers: Vec<memos_api::types::IdentityProvider>,
@@ -26,7 +25,6 @@ impl MemosDesktop {
         let view = cx.entity().clone();
         window.open_dialog(cx, move |dialog, _, _| {
             let view = view.clone();
-            let server_url = server_url.clone();
             let session = session.clone();
             let profile = profile.clone();
             dialog.title("Sign in with SSO").child(
@@ -35,7 +33,6 @@ impl MemosDesktop {
                     .children(providers.clone().into_iter().enumerate().map(
                         move |(ix, provider)| {
                             let view = view.clone();
-                            let server_url = server_url.clone();
                             let session = session.clone();
                             let profile = profile.clone();
                             let label = provider.title.clone();
@@ -48,7 +45,6 @@ impl MemosDesktop {
                                     window.close_dialog(cx);
                                     view.update(cx, |this, cx| {
                                         this.begin_sso(
-                                            server_url.clone(),
                                             session.clone(),
                                             profile.clone(),
                                             provider.clone(),
@@ -127,7 +123,10 @@ impl MemosDesktop {
                                                 div()
                                                     .text_xs()
                                                     .text_color(theme::color(0xaeb3ba))
-                                                    .child("Native client / v0.1.0"),
+                                                    .child(concat!(
+                                                        "Native client / v",
+                                                        env!("CARGO_PKG_VERSION")
+                                                    )),
                                             ),
                                     ),
                             )

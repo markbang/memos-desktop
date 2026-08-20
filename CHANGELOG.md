@@ -6,6 +6,17 @@ The project follows [Semantic Versioning](https://semver.org/) and uses GitHub R
 
 ## Unreleased
 
+### Changed
+
+- Stream cached attachments to disk with explicit avatar, preview, and original-file size limits.
+- Limit concurrent avatar and attachment downloads per authenticated session.
+
+### Fixed
+
+- Validate image responses before using them as avatars or previews and write every cache entry atomically.
+- Display the package version in the sign-in screen instead of a hard-coded release number.
+- Report configuration persistence failures and remove the previously configured password when switching to PAT, anonymous, or SSO authentication.
+
 ## 0.1.0 - 2026-08-19
 
 ### Added

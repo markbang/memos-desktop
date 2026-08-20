@@ -8,8 +8,8 @@
 6. Create and push a signed SemVer tag:
 
 ```bash
-git tag -s v0.1.0 -m "memos-desktop v0.1.0"
-git push origin v0.1.0
+git tag -s vX.Y.Z -m "memos-desktop vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 The Release workflow builds platform archives, publishes `install.sh`, generates SHA-256 checksums, and creates a GitHub Release with generated notes. Verify every artifact and run the installer in an isolated user directory before announcing the release.

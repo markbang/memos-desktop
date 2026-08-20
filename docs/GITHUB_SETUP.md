@@ -48,8 +48,8 @@ Enable:
 Push a SemVer tag to create a release:
 
 ```bash
-git tag -s v0.1.0 -m "memos-desktop v0.1.0"
-git push origin v0.1.0
+git tag -s vX.Y.Z -m "memos-desktop vX.Y.Z"
+git push origin vX.Y.Z
 ```
 
 The release workflow builds Linux, macOS Intel, macOS Apple Silicon, and Windows archives, then publishes checksums with generated release notes.

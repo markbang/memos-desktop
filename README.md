@@ -85,7 +85,7 @@ cargo test -p memos-desktop live_v030_core_round_trip -- --ignored
 
 ## Security
 
-Password sign-in credentials are stored only through the operating system credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) so a successful session can resume on the next launch. Access tokens and refresh cookies remain process-local. The JSON configuration stores only the server URL, username, auto-login preference, and theme preference.
+Password sign-in credentials are stored only through the operating system credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) so a successful session can resume on the next launch. Access tokens and refresh cookies remain process-local. The JSON configuration stores only the server URL, username, auto-login preference, and theme preference. Avatar and attachment cache downloads are size-bounded, image responses are type-checked, and completed files are moved into place atomically.
 
 ## Structure
 
