@@ -15,7 +15,8 @@ The project follows [Semantic Versioning](https://semver.org/) and uses GitHub R
 
 - Validate image responses before using them as avatars or previews and write every cache entry atomically.
 - Display the package version in the sign-in screen instead of a hard-coded release number.
-- Report configuration persistence failures and remove the previously configured password when switching to PAT, anonymous, or SSO authentication.
+- Replace existing configuration files reliably on Windows, report persistence failures, and recover an interrupted replacement.
+- Remove the previously configured password when switching to PAT, anonymous, or SSO authentication.
 
 ## 0.1.0 - 2026-08-19
 
