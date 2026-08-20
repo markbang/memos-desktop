@@ -1,6 +1,5 @@
 use std::{
     future::Future,
-    io::Write as _,
     path::{Path, PathBuf},
     sync::{
         Arc, RwLock,
@@ -18,6 +17,7 @@ use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use thiserror::Error;
 use tokio::{
+    io::AsyncWriteExt as _,
     runtime::Runtime,
     sync::{Mutex, Semaphore},
 };
@@ -521,15 +521,6 @@ impl ApiSession {
         if cache_path.is_file() {
             return Ok(cache_path);
         }
-        let _permit = self
-            .asset_downloads
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|error| ApiError::Runtime(error.to_string()))?;
-        if cache_path.is_file() {
-            return Ok(cache_path);
-        }
 
         let send_authorization = same_origin(&url, &self.base_url);
         let max_bytes = if thumbnail {
@@ -538,7 +529,15 @@ impl ApiSession {
             MAX_ATTACHMENT_OPEN_BYTES
         };
         let session = self.clone();
+        let asset_downloads = self.asset_downloads.clone();
         let handle = self.runtime.spawn(async move {
+            let _permit = asset_downloads
+                .acquire_owned()
+                .await
+                .map_err(|error| ApiError::Runtime(error.to_string()))?;
+            if cache_path.is_file() {
+                return Ok(cache_path);
+            }
             session.refresh_if_needed().await?;
             let mut request = session.client.http_client().get(url.clone());
             if send_authorization && let Some(header) = auth::authorization_header(&session.client)
@@ -616,7 +615,7 @@ impl ApiSession {
                     "data avatar exceeds the {MAX_AVATAR_BYTES} byte cache limit"
                 )));
             }
-            Some(data)
+            Some(data.to_owned())
         } else {
             None
         };
@@ -643,31 +642,37 @@ impl ApiSession {
         if cache_path.is_file() {
             return Ok(Some(cache_path));
         }
-        let _permit = self
-            .asset_downloads
-            .clone()
-            .acquire_owned()
-            .await
-            .map_err(|error| ApiError::Runtime(error.to_string()))?;
-        if cache_path.is_file() {
-            return Ok(Some(cache_path));
-        }
         if let Some(data) = inline_data_base64 {
-            let bytes = BASE64
-                .decode(data)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            if bytes.len() > MAX_AVATAR_BYTES {
-                return Err(ApiError::Request(format!(
-                    "data avatar exceeds the {MAX_AVATAR_BYTES} byte cache limit"
-                )));
-            }
-            write_cache_atomically(&cache_dir, &cache_path, &bytes)?;
+            let inline_cache_dir = cache_dir.clone();
+            let inline_cache_path = cache_path.clone();
+            self.runtime
+                .spawn_blocking(move || {
+                    let bytes = BASE64
+                        .decode(data)
+                        .map_err(|error| ApiError::Request(error.to_string()))?;
+                    if bytes.len() > MAX_AVATAR_BYTES {
+                        return Err(ApiError::Request(format!(
+                            "data avatar exceeds the {MAX_AVATAR_BYTES} byte cache limit"
+                        )));
+                    }
+                    write_cache_atomically(&inline_cache_dir, &inline_cache_path, &bytes)
+                })
+                .await
+                .map_err(|error| ApiError::Runtime(error.to_string()))??;
             return Ok(Some(cache_path));
         }
 
         let send_authorization = same_origin(&url, &self.base_url);
         let session = self.clone();
+        let asset_downloads = self.asset_downloads.clone();
         let handle = self.runtime.spawn(async move {
+            let _permit = asset_downloads
+                .acquire_owned()
+                .await
+                .map_err(|error| ApiError::Runtime(error.to_string()))?;
+            if cache_path.is_file() {
+                return Ok(Some(cache_path));
+            }
             session.refresh_if_needed().await?;
             let mut request = session.client.http_client().get(url.clone());
             if send_authorization && let Some(header) = auth::authorization_header(&session.client)
@@ -1140,10 +1145,13 @@ async fn write_response_cache_atomically(
     resource: &str,
 ) -> Result<(), ApiError> {
     ensure_response_length(response.content_length(), max_bytes, resource)?;
-    std::fs::create_dir_all(cache_dir).map_err(|error| ApiError::Request(error.to_string()))?;
+    tokio::fs::create_dir_all(cache_dir)
+        .await
+        .map_err(|error| ApiError::Request(error.to_string()))?;
     let temporary = cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
-    let mut file =
-        std::fs::File::create(&temporary).map_err(|error| ApiError::Request(error.to_string()))?;
+    let mut file = tokio::fs::File::create(&temporary)
+        .await
+        .map_err(|error| ApiError::Request(error.to_string()))?;
     let mut stream = response.bytes_stream();
     let mut total = 0;
     while let Some(chunk) = stream.next().await {
@@ -1151,7 +1159,7 @@ async fn write_response_cache_atomically(
             Ok(chunk) => chunk,
             Err(error) => {
                 drop(file);
-                _ = std::fs::remove_file(&temporary);
+                _ = tokio::fs::remove_file(&temporary).await;
                 return Err(ApiError::Request(error.to_string()));
             }
         };
@@ -1159,25 +1167,25 @@ async fn write_response_cache_atomically(
             Ok(total) => total,
             Err(error) => {
                 drop(file);
-                _ = std::fs::remove_file(&temporary);
+                _ = tokio::fs::remove_file(&temporary).await;
                 return Err(error);
             }
         };
-        if let Err(error) = file.write_all(&chunk) {
+        if let Err(error) = file.write_all(&chunk).await {
             drop(file);
-            _ = std::fs::remove_file(&temporary);
+            _ = tokio::fs::remove_file(&temporary).await;
             return Err(ApiError::Request(error.to_string()));
         }
     }
-    if let Err(error) = file.flush() {
+    if let Err(error) = file.flush().await {
         drop(file);
-        _ = std::fs::remove_file(&temporary);
+        _ = tokio::fs::remove_file(&temporary).await;
         return Err(ApiError::Request(error.to_string()));
     }
     drop(file);
-    if let Err(error) = std::fs::rename(&temporary, cache_path) {
-        let another_download_completed = cache_path.is_file();
-        _ = std::fs::remove_file(&temporary);
+    if let Err(error) = tokio::fs::rename(&temporary, cache_path).await {
+        let another_download_completed = tokio::fs::metadata(cache_path).await.is_ok();
+        _ = tokio::fs::remove_file(&temporary).await;
         if !another_download_completed {
             return Err(ApiError::Request(error.to_string()));
         }

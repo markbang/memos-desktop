@@ -162,7 +162,7 @@ impl MemosDesktop {
                 .into_any_element(),
         };
         let theme_preference = self.theme_preference;
-        let has_saved_login = self.saved_login_available;
+        let has_saved_login = !self.saved_login_identities.is_empty();
         let view = cx.entity().clone();
         let settings_context_view = cx.entity().clone();
         v_flex()
