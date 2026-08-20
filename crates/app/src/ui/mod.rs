@@ -121,6 +121,25 @@ enum ModuleData {
     Attachments(Vec<Attachment>, HashMap<String, PathBuf>, Option<String>),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SavedLoginIdentity {
+    server_url: String,
+    username: String,
+}
+
+impl SavedLoginIdentity {
+    fn new(server_url: String, username: String) -> Option<Self> {
+        (!server_url.trim().is_empty() && !username.trim().is_empty()).then_some(Self {
+            server_url,
+            username,
+        })
+    }
+
+    fn from_config(config: &AppConfig) -> Option<Self> {
+        Self::new(config.server_url.clone(), config.username.clone())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum SettingsSection {
     #[default]
@@ -177,7 +196,7 @@ pub struct MemosDesktop {
     session: Option<ApiSession>,
     instance: Option<InstanceProfile>,
     current_user: Option<User>,
-    saved_login_available: bool,
+    saved_login_identities: Vec<SavedLoginIdentity>,
     known_users: HashMap<String, User>,
     user_avatars: HashMap<String, PathBuf>,
     profile_user: Option<User>,
@@ -299,7 +318,7 @@ impl MemosDesktop {
             session: None,
             instance,
             current_user,
-            saved_login_available: false,
+            saved_login_identities: Vec::new(),
             known_users: HashMap::new(),
             user_avatars: HashMap::new(),
             profile_user: None,
@@ -362,7 +381,8 @@ impl MemosDesktop {
                 .await
                 .map_err(|error| error.to_string())
                 .and_then(|result| result);
-            let saved_password_found = matches!(&password, Ok(Some(_)));
+            let saved_login_identity =
+                SavedLoginIdentity::new(server_url.clone(), username.clone());
             let mut missing_saved_password = false;
             let result = match password {
                 Ok(Some(password)) => {
@@ -403,17 +423,19 @@ impl MemosDesktop {
             _ = this.update(cx, |this, cx| {
                 this.loading = false;
                 this.notice = None;
-                this.saved_login_available = saved_password_found;
+                this.saved_login_identities.clear();
+                if !missing_saved_password && let Some(identity) = saved_login_identity.clone() {
+                    this.track_saved_login(identity);
+                }
                 match result {
                     Ok((session, profile, user, response)) => {
-                        this.saved_login_available = true;
                         this.apply_connected_session(session, profile, Some(user), response, cx);
                     }
                     Err(error) => {
+                        this.error = Some(format!("Automatic sign-in failed. {error}"));
                         if missing_saved_password {
                             this.persist_connection(server_url.clone(), username.clone(), false);
                         }
-                        this.error = Some(format!("Automatic sign-in failed. {error}"));
                     }
                 }
                 cx.notify();
@@ -521,14 +543,27 @@ impl MemosDesktop {
         .detach();
     }
 
-    fn persist_connection(&self, server_url: String, username: String, auto_login: bool) {
-        let _ = AppConfig {
+    fn track_saved_login(&mut self, identity: SavedLoginIdentity) {
+        if !self.saved_login_identities.contains(&identity) {
+            self.saved_login_identities.push(identity);
+        }
+    }
+
+    fn persist_connection(&mut self, server_url: String, username: String, auto_login: bool) {
+        if let Err(error) = (AppConfig {
             server_url,
             username,
             auto_login,
             theme: self.theme_preference,
+        })
+        .save()
+        {
+            let message = format!("Could not save connection settings: {error}");
+            self.error = Some(match self.error.take() {
+                Some(existing) => format!("{existing}\n{message}"),
+                None => message,
+            });
         }
-        .save();
     }
 
     fn remember_password(
@@ -552,11 +587,14 @@ impl MemosDesktop {
             _ = this.update(cx, |this, cx| {
                 match result {
                     Ok(()) => {
-                        this.saved_login_available = true;
+                        if let Some(identity) =
+                            SavedLoginIdentity::new(server_url.clone(), username.clone())
+                        {
+                            this.track_saved_login(identity);
+                        }
                         this.persist_connection(server_url, username, true);
                     }
                     Err(error) => {
-                        this.saved_login_available = false;
                         this.persist_connection(server_url, username, false);
                         this.notice = Some(format!(
                             "Signed in, but the system credential store could not save the password: {error}"
@@ -570,30 +608,76 @@ impl MemosDesktop {
     }
 
     fn forget_saved_login(&mut self, cx: &mut Context<Self>) {
-        let server_url = self
-            .session
-            .as_ref()
-            .map(|session| session.base_url().to_string())
-            .unwrap_or_else(|| self.server_input.read(cx).value().to_string());
-        let username = self
-            .current_user
-            .as_ref()
-            .map(|user| user.username.clone())
-            .unwrap_or_else(|| self.username_input.read(cx).value().to_string());
-        self.persist_connection(server_url.clone(), username.clone(), false);
+        self.remove_saved_login(true, cx);
+    }
+
+    fn clear_saved_login_for_auth(&mut self, cx: &mut Context<Self>) {
+        self.remove_saved_login(false, cx);
+    }
+
+    fn remove_saved_login(&mut self, announce_success: bool, cx: &mut Context<Self>) {
+        let config = AppConfig::load();
+        let identities = saved_login_identities_for_cleanup(
+            std::mem::take(&mut self.saved_login_identities),
+            &config,
+        );
+        if announce_success {
+            let current_server_url = self
+                .session
+                .as_ref()
+                .map(|session| session.base_url().to_string())
+                .unwrap_or_else(|| self.server_input.read(cx).value().to_string());
+            let current_username = self
+                .current_user
+                .as_ref()
+                .map(|user| user.username.clone())
+                .unwrap_or_else(|| self.username_input.read(cx).value().to_string());
+            self.persist_connection(current_server_url, current_username, false);
+        }
+        cx.notify();
+        if identities.is_empty() {
+            return;
+        }
+
+        let retry_identities = identities.clone();
         let runtime = self.runtime.clone();
         cx.spawn(async move |this, cx| {
-            let result = runtime
-                .spawn_blocking(move || credentials::delete_password(&server_url, &username))
+            let failures = match runtime
+                .spawn_blocking(move || {
+                    identities
+                        .into_iter()
+                        .filter_map(|identity| {
+                            credentials::delete_password(&identity.server_url, &identity.username)
+                                .err()
+                                .map(|error| (identity, error))
+                        })
+                        .collect::<Vec<_>>()
+                })
                 .await
-                .map_err(|error| error.to_string())
-                .and_then(|result| result);
+            {
+                Ok(failures) => failures,
+                Err(error) => retry_identities
+                    .into_iter()
+                    .map(|identity| (identity, error.to_string()))
+                    .collect(),
+            };
             _ = this.update(cx, |this, cx| {
-                this.saved_login_available = false;
-                this.notice = Some(match result {
-                    Ok(()) => "Saved login removed from the system credential store.".into(),
-                    Err(error) => format!("Could not remove the saved login: {error}"),
-                });
+                if failures.is_empty() {
+                    if announce_success {
+                        this.notice =
+                            Some("Saved login removed from the system credential store.".into());
+                    }
+                } else {
+                    for (identity, _) in &failures {
+                        this.track_saved_login(identity.clone());
+                    }
+                    this.notice = Some(format!(
+                        "Could not remove {} saved login entr{}: {}",
+                        failures.len(),
+                        if failures.len() == 1 { "y" } else { "ies" },
+                        failures[0].1
+                    ));
+                }
                 cx.notify();
             });
         })
@@ -1361,14 +1445,7 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((session, profile, providers)) if !providers.is_empty() => {
-                        this.show_sso_provider_dialog(
-                            server_url.clone(),
-                            session,
-                            profile,
-                            providers,
-                            window,
-                            cx,
-                        );
+                        this.show_sso_provider_dialog(session, profile, providers, window, cx);
                     }
                     Ok(_) => this.error = Some("This instance has no SSO providers.".into()),
                     Err(error) => this.error = Some(error.to_string()),
@@ -1381,7 +1458,6 @@ impl MemosDesktop {
 
     fn begin_sso(
         &mut self,
-        server_url: String,
         session: ApiSession,
         profile: InstanceProfile,
         provider: IdentityProvider,
@@ -1432,8 +1508,9 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((user, response)) => {
+                        let server_url = session.base_url().to_string();
                         let username = user.username.clone();
-                        this.saved_login_available = false;
+                        this.clear_saved_login_for_auth(cx);
                         this.apply_connected_session(session, profile, Some(user), response, cx);
                         this.persist_connection(server_url, username, false);
                     }
@@ -1735,12 +1812,17 @@ impl MemosDesktop {
                 this.notice = None;
                 match result {
                     Ok((session, profile, user, response)) => {
-                        this.apply_connected_session(session, profile, user, response, cx);
                         if !anonymous && auth_mode == AuthMode::Password {
+                            this.apply_connected_session(session, profile, user, response, cx);
                             this.remember_password(server_url, username, password, cx);
                         } else {
-                            this.forget_saved_login(cx);
-                            this.persist_connection(server_url, username, false);
+                            let persisted_username = user
+                                .as_ref()
+                                .map(|user| user.username.clone())
+                                .unwrap_or_else(|| username.clone());
+                            this.clear_saved_login_for_auth(cx);
+                            this.apply_connected_session(session, profile, user, response, cx);
+                            this.persist_connection(server_url, persisted_username, false);
                         }
                     }
                     Err(error) => {
@@ -1823,7 +1905,6 @@ impl MemosDesktop {
         self.active_server_filter = None;
         self.instance = None;
         self.current_user = None;
-        self.saved_login_available = false;
         self.known_users.clear();
         self.user_avatars.clear();
         self.profile_user = None;
@@ -3275,6 +3356,18 @@ fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|value| !value.is_empty())
 }
 
+fn saved_login_identities_for_cleanup(
+    mut identities: Vec<SavedLoginIdentity>,
+    config: &AppConfig,
+) -> Vec<SavedLoginIdentity> {
+    if let Some(identity) = SavedLoginIdentity::from_config(config)
+        && !identities.contains(&identity)
+    {
+        identities.push(identity);
+    }
+    identities
+}
+
 fn escape_cel_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -3380,5 +3473,43 @@ fn local_memo(content: String, visibility: MemoVisibility) -> Memo {
         tags,
         update_time: Some(now),
         visibility,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn saved_login_cleanup_keeps_tracked_and_configured_identities() {
+        let tracked =
+            SavedLoginIdentity::new("https://new.example.com".into(), "new-user".into()).unwrap();
+        let config = AppConfig {
+            server_url: "https://old.example.com".into(),
+            username: "old-user".into(),
+            auto_login: true,
+            theme: ThemePreference::System,
+        };
+
+        let identities = saved_login_identities_for_cleanup(vec![tracked.clone()], &config);
+
+        assert_eq!(identities.len(), 2);
+        assert!(identities.contains(&tracked));
+        assert!(identities.contains(&SavedLoginIdentity::from_config(&config).unwrap()));
+    }
+
+    #[test]
+    fn saved_login_cleanup_deduplicates_the_configured_identity() {
+        let config = AppConfig {
+            server_url: "https://memos.example.com".into(),
+            username: "alice".into(),
+            auto_login: true,
+            theme: ThemePreference::System,
+        };
+        let identity = SavedLoginIdentity::from_config(&config).unwrap();
+
+        let identities = saved_login_identities_for_cleanup(vec![identity.clone()], &config);
+
+        assert_eq!(identities, vec![identity]);
     }
 }

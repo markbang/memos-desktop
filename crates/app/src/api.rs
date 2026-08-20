@@ -16,10 +16,18 @@ use memos_api::{Client, Error as ClientError, ResponseValue, auth, types};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use thiserror::Error;
-use tokio::{runtime::Runtime, sync::Mutex};
+use tokio::{
+    io::AsyncWriteExt as _,
+    runtime::Runtime,
+    sync::{Mutex, Semaphore},
+};
 use url::Url;
 
 const REFRESH_BUFFER: Duration = Duration::seconds(30);
+const MAX_AVATAR_BYTES: usize = 8 * 1024 * 1024;
+const MAX_ATTACHMENT_PREVIEW_BYTES: usize = 16 * 1024 * 1024;
+const MAX_ATTACHMENT_OPEN_BYTES: usize = 512 * 1024 * 1024;
+const MAX_PARALLEL_ASSET_DOWNLOADS: usize = 6;
 
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -41,6 +49,7 @@ pub struct ApiSession {
     identity: Arc<()>,
     access_token_expires_at: Arc<RwLock<Option<DateTime<Utc>>>>,
     refresh_lock: Arc<Mutex<()>>,
+    asset_downloads: Arc<Semaphore>,
 }
 
 #[derive(Default)]
@@ -109,6 +118,7 @@ impl ApiSession {
             identity: Arc::new(()),
             access_token_expires_at: Arc::new(RwLock::new(None)),
             refresh_lock: Arc::new(Mutex::new(())),
+            asset_downloads: Arc::new(Semaphore::new(MAX_PARALLEL_ASSET_DOWNLOADS)),
         })
     }
 
@@ -513,8 +523,21 @@ impl ApiSession {
         }
 
         let send_authorization = same_origin(&url, &self.base_url);
+        let max_bytes = if thumbnail {
+            MAX_ATTACHMENT_PREVIEW_BYTES
+        } else {
+            MAX_ATTACHMENT_OPEN_BYTES
+        };
         let session = self.clone();
+        let asset_downloads = self.asset_downloads.clone();
         let handle = self.runtime.spawn(async move {
+            let _permit = asset_downloads
+                .acquire_owned()
+                .await
+                .map_err(|error| ApiError::Runtime(error.to_string()))?;
+            if cache_path.is_file() {
+                return Ok(cache_path);
+            }
             session.refresh_if_needed().await?;
             let mut request = session.client.http_client().get(url.clone());
             if send_authorization && let Some(header) = auth::authorization_header(&session.client)
@@ -533,23 +556,17 @@ impl ApiSession {
                     "HTTP {status} from {url}: {body}"
                 )));
             }
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            std::fs::create_dir_all(&cache_dir)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            let temporary =
-                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
-            std::fs::write(&temporary, bytes)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            if let Err(error) = std::fs::rename(&temporary, &cache_path) {
-                let another_download_completed = cache_path.is_file();
-                _ = std::fs::remove_file(&temporary);
-                if !another_download_completed {
-                    return Err(ApiError::Request(error.to_string()));
-                }
+            if thumbnail {
+                validate_image_content_type(&response, url.as_str())?;
             }
+            write_response_cache_atomically(
+                response,
+                &cache_dir,
+                &cache_path,
+                max_bytes,
+                url.as_str(),
+            )
+            .await?;
             Ok(cache_path)
         });
         handle
@@ -579,7 +596,7 @@ impl ApiSession {
             }
             Err(error) => return Err(ApiError::Request(error.to_string())),
         };
-        let inline_data = if url.scheme() == "data" {
+        let inline_data_base64 = if url.scheme() == "data" {
             let (metadata, data) = avatar_url
                 .strip_prefix("data:")
                 .and_then(|value| value.split_once(','))
@@ -589,15 +606,20 @@ impl ApiSession {
                     "data avatar URL must contain a base64 image".into(),
                 ));
             }
-            Some(
-                BASE64
-                    .decode(data)
-                    .map_err(|error| ApiError::Request(error.to_string()))?,
-            )
+            let max_encoded_bytes = MAX_AVATAR_BYTES
+                .saturating_mul(4)
+                .saturating_div(3)
+                .saturating_add(4);
+            if data.len() > max_encoded_bytes {
+                return Err(ApiError::Request(format!(
+                    "data avatar exceeds the {MAX_AVATAR_BYTES} byte cache limit"
+                )));
+            }
+            Some(data.to_owned())
         } else {
             None
         };
-        if inline_data.is_none() && !matches!(url.scheme(), "http" | "https") {
+        if inline_data_base64.is_none() && !matches!(url.scheme(), "http" | "https") {
             return Err(ApiError::Request(
                 "avatar URL must use HTTP or HTTPS".into(),
             ));
@@ -620,21 +642,37 @@ impl ApiSession {
         if cache_path.is_file() {
             return Ok(Some(cache_path));
         }
-        if let Some(bytes) = inline_data {
-            std::fs::create_dir_all(&cache_dir)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            let temporary =
-                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
-            std::fs::write(&temporary, bytes)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            std::fs::rename(&temporary, &cache_path)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
+        if let Some(data) = inline_data_base64 {
+            let inline_cache_dir = cache_dir.clone();
+            let inline_cache_path = cache_path.clone();
+            self.runtime
+                .spawn_blocking(move || {
+                    let bytes = BASE64
+                        .decode(data)
+                        .map_err(|error| ApiError::Request(error.to_string()))?;
+                    if bytes.len() > MAX_AVATAR_BYTES {
+                        return Err(ApiError::Request(format!(
+                            "data avatar exceeds the {MAX_AVATAR_BYTES} byte cache limit"
+                        )));
+                    }
+                    write_cache_atomically(&inline_cache_dir, &inline_cache_path, &bytes)
+                })
+                .await
+                .map_err(|error| ApiError::Runtime(error.to_string()))??;
             return Ok(Some(cache_path));
         }
 
         let send_authorization = same_origin(&url, &self.base_url);
         let session = self.clone();
+        let asset_downloads = self.asset_downloads.clone();
         let handle = self.runtime.spawn(async move {
+            let _permit = asset_downloads
+                .acquire_owned()
+                .await
+                .map_err(|error| ApiError::Runtime(error.to_string()))?;
+            if cache_path.is_file() {
+                return Ok(Some(cache_path));
+            }
             session.refresh_if_needed().await?;
             let mut request = session.client.http_client().get(url.clone());
             if send_authorization && let Some(header) = auth::authorization_header(&session.client)
@@ -653,23 +691,15 @@ impl ApiSession {
                     body.chars().take(256).collect::<String>()
                 )));
             }
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            std::fs::create_dir_all(&cache_dir)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            let temporary =
-                cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
-            std::fs::write(&temporary, bytes)
-                .map_err(|error| ApiError::Request(error.to_string()))?;
-            if let Err(error) = std::fs::rename(&temporary, &cache_path) {
-                let another_download_completed = cache_path.is_file();
-                _ = std::fs::remove_file(&temporary);
-                if !another_download_completed {
-                    return Err(ApiError::Request(error.to_string()));
-                }
-            }
+            validate_image_content_type(&response, url.as_str())?;
+            write_response_cache_atomically(
+                response,
+                &cache_dir,
+                &cache_path,
+                MAX_AVATAR_BYTES,
+                url.as_str(),
+            )
+            .await?;
             Ok(Some(cache_path))
         });
         handle
@@ -1107,6 +1137,144 @@ async fn response_error(response: reqwest::Response, url: &str) -> Result<(), Ap
     )))
 }
 
+async fn write_response_cache_atomically(
+    response: reqwest::Response,
+    cache_dir: &Path,
+    cache_path: &Path,
+    max_bytes: usize,
+    resource: &str,
+) -> Result<(), ApiError> {
+    ensure_response_length(response.content_length(), max_bytes, resource)?;
+    tokio::fs::create_dir_all(cache_dir)
+        .await
+        .map_err(|error| ApiError::Request(error.to_string()))?;
+    let temporary = cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
+    let mut file = tokio::fs::File::create(&temporary)
+        .await
+        .map_err(|error| ApiError::Request(error.to_string()))?;
+    let mut stream = response.bytes_stream();
+    let mut total = 0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(error) => {
+                drop(file);
+                _ = tokio::fs::remove_file(&temporary).await;
+                return Err(ApiError::Request(error.to_string()));
+            }
+        };
+        total = match next_response_length(total, chunk.len(), max_bytes, resource) {
+            Ok(total) => total,
+            Err(error) => {
+                drop(file);
+                _ = tokio::fs::remove_file(&temporary).await;
+                return Err(error);
+            }
+        };
+        if let Err(error) = file.write_all(&chunk).await {
+            drop(file);
+            _ = tokio::fs::remove_file(&temporary).await;
+            return Err(ApiError::Request(error.to_string()));
+        }
+    }
+    if let Err(error) = file.flush().await {
+        drop(file);
+        _ = tokio::fs::remove_file(&temporary).await;
+        return Err(ApiError::Request(error.to_string()));
+    }
+    drop(file);
+    if let Err(error) = tokio::fs::rename(&temporary, cache_path).await {
+        let another_download_completed = cache_path_is_file(cache_path).await;
+        _ = tokio::fs::remove_file(&temporary).await;
+        if !another_download_completed {
+            return Err(ApiError::Request(error.to_string()));
+        }
+    }
+    Ok(())
+}
+
+async fn cache_path_is_file(path: &Path) -> bool {
+    tokio::fs::metadata(path)
+        .await
+        .is_ok_and(|metadata| metadata.is_file())
+}
+
+fn ensure_response_length(
+    content_length: Option<u64>,
+    max_bytes: usize,
+    resource: &str,
+) -> Result<(), ApiError> {
+    if content_length.is_some_and(|length| length > max_bytes as u64) {
+        return Err(ApiError::Request(format!(
+            "{resource} exceeds the {max_bytes} byte cache limit"
+        )));
+    }
+    Ok(())
+}
+
+fn next_response_length(
+    current: usize,
+    chunk_length: usize,
+    max_bytes: usize,
+    resource: &str,
+) -> Result<usize, ApiError> {
+    let next_length = current.checked_add(chunk_length).ok_or_else(|| {
+        ApiError::Request(format!(
+            "{resource} response size overflowed the cache limit"
+        ))
+    })?;
+    if next_length > max_bytes {
+        return Err(ApiError::Request(format!(
+            "{resource} exceeds the {max_bytes} byte cache limit"
+        )));
+    }
+    Ok(next_length)
+}
+
+fn validate_image_content_type(
+    response: &reqwest::Response,
+    resource: &str,
+) -> Result<(), ApiError> {
+    let media_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
+        .unwrap_or_default();
+    if !is_image_media_type(media_type) {
+        return Err(ApiError::Request(format!(
+            "{resource} did not return an image Content-Type"
+        )));
+    }
+    Ok(())
+}
+
+fn is_image_media_type(media_type: &str) -> bool {
+    media_type.to_ascii_lowercase().starts_with("image/")
+}
+
+fn write_cache_atomically(
+    cache_dir: &Path,
+    cache_path: &Path,
+    bytes: &[u8],
+) -> Result<(), ApiError> {
+    std::fs::create_dir_all(cache_dir).map_err(|error| ApiError::Request(error.to_string()))?;
+    let temporary = cache_path.with_extension(format!("download-{}", rand::random::<u64>()));
+    if let Err(error) = std::fs::write(&temporary, bytes) {
+        _ = std::fs::remove_file(&temporary);
+        return Err(ApiError::Request(error.to_string()));
+    }
+    if let Err(error) = std::fs::rename(&temporary, cache_path) {
+        let another_download_completed = cache_path.is_file();
+        _ = std::fs::remove_file(&temporary);
+        if !another_download_completed {
+            return Err(ApiError::Request(error.to_string()));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1181,6 +1349,49 @@ mod tests {
             ApiSession::new("memos.example.com", runtime),
             Err(ApiError::InvalidServerUrl(_))
         ));
+    }
+
+    #[test]
+    fn image_media_type_requires_an_image() {
+        assert!(is_image_media_type("image/png"));
+        assert!(is_image_media_type("IMAGE/WEBP"));
+        assert!(!is_image_media_type("application/octet-stream"));
+        assert!(!is_image_media_type(""));
+    }
+
+    #[test]
+    fn response_cache_limits_are_enforced_for_headers_and_chunks() {
+        assert!(ensure_response_length(Some(4), 4, "test").is_ok());
+        assert!(ensure_response_length(Some(5), 4, "test").is_err());
+        let mut total = 0;
+        total = next_response_length(total, 3, 4, "test").unwrap();
+        assert_eq!(total, 3);
+        assert!(next_response_length(total, 2, 4, "test").is_err());
+    }
+
+    #[test]
+    fn cache_writer_creates_parent_and_writes_content() {
+        let root = std::env::temp_dir().join(format!("memos-cache-test-{}", rand::random::<u64>()));
+        let cache_dir = root.join("nested");
+        let cache_path = cache_dir.join("avatar.image");
+        write_cache_atomically(&cache_dir, &cache_path, b"first").unwrap();
+        assert_eq!(std::fs::read(&cache_path).unwrap(), b"first");
+        assert!(cache_dir.is_dir());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cache_path_check_requires_a_regular_file() {
+        let root = std::env::temp_dir().join(format!("memos-cache-test-{}", rand::random::<u64>()));
+        let directory = root.join("not-a-file");
+        let file = root.join("cached.image");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&file, b"image").unwrap();
+
+        assert!(!cache_path_is_file(&directory).await);
+        assert!(cache_path_is_file(&file).await);
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
