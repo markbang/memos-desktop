@@ -44,14 +44,13 @@ impl AppConfig {
     }
 
     fn load_from_path(path: &Path) -> Self {
-        let content = match fs::read_to_string(path) {
-            Ok(content) => Some(content),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {
-                fs::read_to_string(backup_path(path)).ok()
-            }
-            Err(_) => None,
-        };
-        content
+        if let Ok(content) = fs::read_to_string(path)
+            && let Ok(config) = serde_json::from_str(&content)
+        {
+            return config;
+        }
+        fs::read_to_string(backup_path(path))
+            .ok()
             .and_then(|content| serde_json::from_str(&content).ok())
             .unwrap_or_default()
     }
@@ -164,12 +163,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("memos-config-test-{}", rand::random::<u64>()));
         let path = root.join("config.json");
-        let config = AppConfig {
-            server_url: "https://memos.example.com".into(),
-            username: "alice".into(),
-            auto_login: true,
-            theme: ThemePreference::System,
-        };
+        let config = test_config();
         fs::create_dir_all(&root).unwrap();
         fs::write(
             backup_path(&path),
@@ -182,5 +176,35 @@ mod tests {
         assert_eq!(loaded.username, config.username);
         assert!(loaded.auto_login);
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn load_recovers_the_backup_when_the_main_config_is_corrupt() {
+        let root =
+            std::env::temp_dir().join(format!("memos-config-test-{}", rand::random::<u64>()));
+        let path = root.join("config.json");
+        let config = test_config();
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&path, b"{not-json").unwrap();
+        fs::write(
+            backup_path(&path),
+            serde_json::to_vec_pretty(&config).unwrap(),
+        )
+        .unwrap();
+
+        let loaded = AppConfig::load_from_path(&path);
+        assert_eq!(loaded.server_url, config.server_url);
+        assert_eq!(loaded.username, config.username);
+        assert!(loaded.auto_login);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn test_config() -> AppConfig {
+        AppConfig {
+            server_url: "https://memos.example.com".into(),
+            username: "alice".into(),
+            auto_login: true,
+            theme: ThemePreference::System,
+        }
     }
 }
