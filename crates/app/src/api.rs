@@ -1184,13 +1184,19 @@ async fn write_response_cache_atomically(
     }
     drop(file);
     if let Err(error) = tokio::fs::rename(&temporary, cache_path).await {
-        let another_download_completed = tokio::fs::metadata(cache_path).await.is_ok();
+        let another_download_completed = cache_path_is_file(cache_path).await;
         _ = tokio::fs::remove_file(&temporary).await;
         if !another_download_completed {
             return Err(ApiError::Request(error.to_string()));
         }
     }
     Ok(())
+}
+
+async fn cache_path_is_file(path: &Path) -> bool {
+    tokio::fs::metadata(path)
+        .await
+        .is_ok_and(|metadata| metadata.is_file())
 }
 
 fn ensure_response_length(
@@ -1371,6 +1377,20 @@ mod tests {
         write_cache_atomically(&cache_dir, &cache_path, b"first").unwrap();
         assert_eq!(std::fs::read(&cache_path).unwrap(), b"first");
         assert!(cache_dir.is_dir());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cache_path_check_requires_a_regular_file() {
+        let root = std::env::temp_dir().join(format!("memos-cache-test-{}", rand::random::<u64>()));
+        let directory = root.join("not-a-file");
+        let file = root.join("cached.image");
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(&file, b"image").unwrap();
+
+        assert!(!cache_path_is_file(&directory).await);
+        assert!(cache_path_is_file(&file).await);
+
         std::fs::remove_dir_all(root).unwrap();
     }
 
