@@ -8,6 +8,15 @@ A native desktop client for Memos built with Rust, GPUI, and GPUI Component.
 
 The application uses Memos' generated v1 OpenAPI contract instead of maintaining a parallel handwritten protocol. It targets Memos v0.30 and keeps a distinct, desktop-first visual and interaction model while covering the server's core workflows.
 
+## Screenshots
+
+These are real captures from the native GPUI client. Memo text, account details, and attachment content have been anonymized for repository documentation.
+
+<p align="center">
+  <img src="docs/assets/timeline-light.webp" alt="Memos Desktop light theme timeline with composer and detail layout" width="49%" />
+  <img src="docs/assets/gallery-dark.webp" alt="Memos Desktop dark theme timeline with inline attachment gallery" width="49%" />
+</p>
+
 ## Current milestone
 
 The current build is an alpha desktop client with a complete v0.30 transport contract and broad end-to-end workflow coverage. The UI remains intentionally independent from the web application.
