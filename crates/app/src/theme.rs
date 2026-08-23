@@ -4,9 +4,9 @@ use gpui::{App, Hsla, Window, WindowAppearance, px, rgb};
 use gpui_component::{Theme, ThemeMode};
 use serde::{Deserialize, Serialize};
 
-pub const NAV_WIDTH: f32 = 72.0;
-pub const CONTEXT_WIDTH: f32 = 272.0;
-pub const INSPECTOR_WIDTH: f32 = 360.0;
+pub const NAV_WIDTH: f32 = 64.0;
+pub const CONTEXT_WIDTH: f32 = 256.0;
+pub const INSPECTOR_WIDTH: f32 = 320.0;
 
 static DARK_MODE: AtomicBool = AtomicBool::new(false);
 
@@ -65,10 +65,10 @@ fn configure_component_theme(cx: &mut App) {
     let theme = Theme::global_mut(cx);
 
     theme.font_family = ui_family().into();
-    theme.font_size = px(15.0);
+    theme.font_size = px(14.0);
     theme.mono_font_size = px(12.0);
-    theme.radius = px(4.0);
-    theme.radius_lg = px(6.0);
+    theme.radius = px(6.0);
+    theme.radius_lg = px(8.0);
     theme.shadow = false;
 
     theme.colors.background = paper();
@@ -79,43 +79,27 @@ fn configure_component_theme(cx: &mut App) {
     theme.colors.caret = cobalt();
     theme.colors.selection = pale_cobalt();
 
-    theme.colors.primary = vermilion();
+    theme.colors.primary = cobalt();
     theme.colors.primary_hover = if dark {
-        color(0xf4775e)
+        color(0x82a6ff)
     } else {
-        color(0xc9432b)
+        color(0x3d78f5)
     };
     theme.colors.primary_active = if dark {
-        color(0xd75a43)
+        color(0x638cff)
     } else {
-        color(0xad3522)
+        color(0x1d56cc)
     };
     theme.colors.primary_foreground = color(0xffffff);
 
-    theme.colors.secondary = if dark {
-        color(0x2b2f36)
-    } else {
-        color(0xf0f1ee)
-    };
-    theme.colors.secondary_hover = if dark {
-        color(0x363b44)
-    } else {
-        color(0xe4e6e1)
-    };
-    theme.colors.secondary_active = if dark {
-        color(0x414751)
-    } else {
-        color(0xd7dad4)
-    };
+    theme.colors.secondary = subtle_surface();
+    theme.colors.secondary_hover = hover_surface();
+    theme.colors.secondary_active = line_strong();
     theme.colors.secondary_foreground = ink();
 
     theme.colors.accent = pale_cobalt();
     theme.colors.accent_foreground = if dark { color(0xdce7ff) } else { cobalt_dark() };
-    theme.colors.muted = if dark {
-        color(0x2a2d33)
-    } else {
-        color(0xe9ebe7)
-    };
+    theme.colors.muted = subtle_surface();
     theme.colors.muted_foreground = graphite();
     theme.colors.popover = surface();
     theme.colors.popover_foreground = ink();
@@ -162,12 +146,16 @@ fn configure_component_theme(cx: &mut App) {
     };
 
     theme.colors.sidebar = nav();
-    theme.colors.sidebar_foreground = color(0xeef0ec);
+    theme.colors.sidebar_foreground = if dark { color(0xd1d3d8) } else { ink() };
     theme.colors.sidebar_border = nav_border();
-    theme.colors.sidebar_accent = color(0x292d33);
-    theme.colors.sidebar_accent_foreground = color(0xffffff);
-    theme.colors.sidebar_primary = vermilion();
-    theme.colors.sidebar_primary_foreground = color(0xffffff);
+    theme.colors.sidebar_accent = subtle_surface();
+    theme.colors.sidebar_accent_foreground = ink();
+    theme.colors.sidebar_primary = cobalt();
+    theme.colors.sidebar_primary_foreground = if dark {
+        color(0x17191d)
+    } else {
+        color(0xffffff)
+    };
 
     theme.colors.list = surface();
     theme.colors.list_head = subtle_surface();
@@ -229,11 +217,11 @@ pub fn color(value: u32) -> Hsla {
 }
 
 pub fn nav() -> Hsla {
-    color(if is_dark() { 0x111317 } else { 0x17191d })
+    color(if is_dark() { 0x24262b } else { 0xf7f5f0 })
 }
 
 pub fn nav_border() -> Hsla {
-    color(if is_dark() { 0x2b2f36 } else { 0x30343b })
+    color(if is_dark() { 0x34363d } else { 0xe4e0d8 })
 }
 
 pub fn ink() -> Hsla {
@@ -245,31 +233,31 @@ pub fn graphite() -> Hsla {
 }
 
 pub fn paper() -> Hsla {
-    color(if is_dark() { 0x181a1f } else { 0xf6f7f4 })
+    color(if is_dark() { 0x27282b } else { 0xfaf9f6 })
 }
 
 pub fn surface() -> Hsla {
-    color(if is_dark() { 0x202329 } else { 0xffffff })
+    color(if is_dark() { 0x303136 } else { 0xffffff })
 }
 
 pub fn subtle_surface() -> Hsla {
-    color(if is_dark() { 0x25282e } else { 0xf0f1ee })
+    color(if is_dark() { 0x3a3b41 } else { 0xf1efe9 })
 }
 
 pub fn hover_surface() -> Hsla {
-    color(if is_dark() { 0x292d34 } else { 0xf1f4fb })
+    color(if is_dark() { 0x42434a } else { 0xf2f0eb })
 }
 
 pub fn line() -> Hsla {
-    color(if is_dark() { 0x343840 } else { 0xdfe1dc })
+    color(if is_dark() { 0x46474d } else { 0xe5e1d8 })
 }
 
 pub fn line_strong() -> Hsla {
-    color(if is_dark() { 0x484e58 } else { 0xc8cbc5 })
+    color(if is_dark() { 0x5b5c64 } else { 0xd8d3c9 })
 }
 
 pub fn vermilion() -> Hsla {
-    color(if is_dark() { 0xea684f } else { 0xe65335 })
+    color(if is_dark() { 0xec735b } else { 0xd94c36 })
 }
 
 pub fn cobalt() -> Hsla {

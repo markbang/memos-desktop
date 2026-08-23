@@ -51,7 +51,7 @@ enum Route {
 impl Route {
     fn title(self) -> &'static str {
         match self {
-            Self::Timeline => "Timeline",
+            Self::Timeline => "Memos",
             Self::Explore => "Explore",
             Self::Views => "Saved views",
             Self::Archive => "Archive",
@@ -206,6 +206,7 @@ pub struct MemosDesktop {
     active_server_filter: Option<String>,
     selected_memo_name: Option<String>,
     search_query: String,
+    active_tag: Option<String>,
     visibility: MemoVisibility,
     detail_tab: DetailTab,
     detail_loading: bool,
@@ -271,7 +272,7 @@ impl MemosDesktop {
         let composer_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .auto_grow(3, 10)
-                .placeholder("Capture a thought in Markdown...")
+                .placeholder("Any thoughts?")
         });
         let comment_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Add a comment..."));
@@ -290,14 +291,12 @@ impl MemosDesktop {
 
         let runtime = Arc::new(Runtime::new().expect("failed to create network runtime"));
         let (connected, instance, current_user, memos, selected_memo_name) = if demo_mode {
-            let memos = demo::memos();
-            let selected = memos.first().and_then(|memo| memo.name.clone());
             (
                 true,
                 Some(demo::instance()),
                 Some(demo::user()),
-                memos,
-                selected,
+                demo::memos(),
+                None,
             )
         } else {
             (false, None, None, Vec::new(), None)
@@ -328,6 +327,7 @@ impl MemosDesktop {
             active_server_filter: None,
             selected_memo_name,
             search_query: String::new(),
+            active_tag: None,
             visibility: MemoVisibility::Private,
             detail_tab: DetailTab::Content,
             detail_loading: false,
@@ -356,7 +356,9 @@ impl MemosDesktop {
             comment_input,
             _subscriptions,
         };
-        if !demo_mode && config.auto_login {
+        if demo_mode {
+            desktop.memo_views = demo::shortcuts();
+        } else if config.auto_login {
             desktop.start_auto_login(config, cx);
         }
         desktop
@@ -455,7 +457,7 @@ impl MemosDesktop {
         self.connected = true;
         self.error = None;
         self.next_memo_page_token = non_empty(response.next_page_token);
-        self.selected_memo_name = response.memos.first().and_then(|memo| memo.name.clone());
+        self.selected_memo_name = None;
         self.memos = response.memos;
         self.instance = Some(profile);
         self.current_user = user;
@@ -467,10 +469,37 @@ impl MemosDesktop {
             self.start_live_updates(cx);
         }
         self.route = Route::Timeline;
-        if let Some(name) = self.selected_memo_name.clone() {
-            self.load_detail(name, cx);
-        }
         self.refresh_memo_assets(cx);
+        self.refresh_memo_views(cx);
+    }
+
+    fn refresh_memo_views(&mut self, cx: &mut Context<Self>) {
+        let (Some(session), Some(user_name)) = (
+            self.session.clone(),
+            self.current_user
+                .as_ref()
+                .and_then(|user| user.name.clone()),
+        ) else {
+            return;
+        };
+        let request_session = session.clone();
+        cx.spawn(async move |this, cx| {
+            let result = session.list_memo_views(user_name).await;
+            _ = this.update(cx, |this, cx| {
+                if !this
+                    .session
+                    .as_ref()
+                    .is_some_and(|session| session.same_session(&request_session))
+                {
+                    return;
+                }
+                if let Ok(views) = result {
+                    this.memo_views = views;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     fn refresh_memo_assets(&mut self, cx: &mut Context<Self>) {
@@ -1903,6 +1932,7 @@ impl MemosDesktop {
         self.route = Route::Timeline;
         self.quick_filter = QuickFilter::All;
         self.active_server_filter = None;
+        self.active_tag = None;
         self.instance = None;
         self.current_user = None;
         self.known_users.clear();
@@ -1985,17 +2015,12 @@ impl MemosDesktop {
                         this.profile_stats = Some(stats);
                         this.memos = response.memos;
                         this.next_memo_page_token = non_empty(response.next_page_token);
-                        this.selected_memo_name =
-                            this.memos.first().and_then(|memo| memo.name.clone());
+                        this.selected_memo_name = None;
+                        this.detail = MemoDetailData::default();
+                        this.detail_error = None;
                         this.route = Route::Profile;
                         this.error = None;
                         this.refresh_memo_assets(cx);
-                        if let Some(name) = this.selected_memo_name.clone() {
-                            this.load_detail(name, cx);
-                        } else {
-                            this.detail = MemoDetailData::default();
-                            this.detail_error = None;
-                        }
                     }
                     Err(error) => this.error = Some(error.to_string()),
                 }
@@ -2007,8 +2032,13 @@ impl MemosDesktop {
 
     fn navigate(&mut self, route: Route, cx: &mut Context<Self>) {
         self.route = route;
+        self.selected_memo_name = None;
+        self.detail_loading = false;
+        self.detail_error = None;
+        self.detail = MemoDetailData::default();
         self.quick_filter = QuickFilter::All;
         self.active_server_filter = None;
+        self.active_tag = None;
         self.error = None;
         if self.demo_mode {
             cx.notify();
@@ -2866,7 +2896,13 @@ impl MemosDesktop {
     fn effective_memo_filter(&self) -> Option<String> {
         let mut terms = Vec::new();
         match self.route {
-            Route::Explore => terms.push(r#"visibility == "PUBLIC""#.to_string()),
+            Route::Explore => {
+                if self.current_user.is_some() {
+                    terms.push(r#"visibility in ["PUBLIC", "PROTECTED"]"#.to_string());
+                } else {
+                    terms.push(r#"visibility == "PUBLIC""#.to_string());
+                }
+            }
             Route::Timeline | Route::Archive => {
                 if let Some(creator) = self
                     .current_user
@@ -2906,6 +2942,9 @@ impl MemosDesktop {
                 escape_cel_string(query)
             ));
         }
+        if let Some(tag) = self.active_tag.as_deref() {
+            terms.push(format!("tag in [\"{}\"]", escape_cel_string(tag)));
+        }
         (!terms.is_empty()).then(|| terms.join(" && "))
     }
 
@@ -2943,10 +2982,6 @@ impl MemosDesktop {
                                 .find(|memo| memo.name.as_deref() == Some(selected.as_str()))
                                 .and_then(|memo| memo.name.clone())
                         });
-                        if this.selected_memo_name.is_none() {
-                            this.selected_memo_name =
-                                response.memos.first().and_then(|memo| memo.name.clone());
-                        }
                         this.memos = response.memos;
                         if let Some(name) = this.selected_memo_name.clone() {
                             this.load_detail(name, cx);
@@ -3001,13 +3036,27 @@ impl MemosDesktop {
 
     fn open_memo_view(&mut self, filter: String, cx: &mut Context<Self>) {
         self.route = Route::Timeline;
+        self.selected_memo_name = None;
+        self.detail_loading = false;
+        self.detail_error = None;
+        self.detail = MemoDetailData::default();
         self.quick_filter = QuickFilter::All;
         self.active_server_filter = Some(filter);
+        self.active_tag = None;
         self.reload_memos(cx);
     }
 
     fn set_quick_filter(&mut self, filter: QuickFilter, cx: &mut Context<Self>) {
         self.quick_filter = filter;
+        if self.demo_mode {
+            cx.notify();
+        } else {
+            self.reload_memos(cx);
+        }
+    }
+
+    fn set_tag_filter(&mut self, tag: String, cx: &mut Context<Self>) {
+        self.active_tag = (self.active_tag.as_deref() != Some(tag.as_str())).then_some(tag);
         if self.demo_mode {
             cx.notify();
         } else {
@@ -3290,8 +3339,12 @@ impl MemosDesktop {
         self.memos
             .iter()
             .filter(|memo| self.quick_filter.matches(memo))
+            .filter(|memo| memo_matches_server_filter(memo, self.active_server_filter.as_deref()))
+            .filter(|memo| memo_has_tag(memo, self.active_tag.as_deref()))
             .filter(|memo| {
-                self.route != Route::Explore || memo.visibility == MemoVisibility::Public
+                self.route != Route::Explore
+                    || memo.visibility == MemoVisibility::Public
+                    || (self.current_user.is_some() && memo.visibility == MemoVisibility::Protected)
             })
             .filter(|memo| {
                 query.is_empty()
@@ -3366,6 +3419,32 @@ fn saved_login_identities_for_cleanup(
         identities.push(identity);
     }
     identities
+}
+
+fn memo_has_tag(memo: &Memo, active_tag: Option<&str>) -> bool {
+    active_tag.is_none_or(|tag| memo.tags.iter().any(|memo_tag| memo_tag == tag))
+}
+
+fn memo_matches_server_filter(memo: &Memo, filter: Option<&str>) -> bool {
+    match filter.map(str::trim) {
+        Some("pinned == true") => memo.pinned.unwrap_or(false),
+        Some("has_task_list == true") => memo
+            .property
+            .as_ref()
+            .and_then(|property| property.has_task_list)
+            .unwrap_or(false),
+        Some("has_code == true") => memo
+            .property
+            .as_ref()
+            .and_then(|property| property.has_code)
+            .unwrap_or(false),
+        Some("has_link == true") => memo
+            .property
+            .as_ref()
+            .and_then(|property| property.has_link)
+            .unwrap_or(false),
+        _ => true,
+    }
 }
 
 fn escape_cel_string(value: &str) -> String {
@@ -3496,6 +3575,20 @@ mod tests {
         assert_eq!(identities.len(), 2);
         assert!(identities.contains(&tracked));
         assert!(identities.contains(&SavedLoginIdentity::from_config(&config).unwrap()));
+    }
+
+    #[test]
+    fn tag_filter_matches_exact_tags() {
+        let memo = demo::memos()
+            .into_iter()
+            .find(|memo| memo.name.as_deref() == Some("memos/focus-week"))
+            .unwrap();
+
+        assert!(memo_has_tag(&memo, None));
+        assert!(memo_has_tag(&memo, Some("weekly")));
+        assert!(!memo_has_tag(&memo, Some("week")));
+        assert!(memo_matches_server_filter(&memo, Some("pinned == true")));
+        assert!(!memo_matches_server_filter(&memo, Some("has_code == true")));
     }
 
     #[test]

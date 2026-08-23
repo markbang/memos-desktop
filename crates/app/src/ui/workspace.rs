@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, rc::Rc};
 
 use serde::{Serialize, de::DeserializeOwned};
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Duration, Local, Utc};
 use gpui::{
     AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement, ObjectFit,
     ParentElement as _, StatefulInteractiveElement as _, Styled, StyledImage as _, Window, div,
@@ -21,7 +21,9 @@ use gpui_component::{
     text::TextView,
     v_flex,
 };
-use memos_api::types::{Memo, MemoState, MemoVisibility, Shortcut, UserRole};
+use memos_api::types::{
+    Memo, MemoState, MemoVisibility, Shortcut, UserNotificationStatus, UserRole,
+};
 
 use super::{
     DetailTab, MemosDesktop, QuickFilter, Route, SettingsSection, external_attachment_url,
@@ -161,6 +163,16 @@ impl MemosDesktop {
                 .name(avatar_name)
                 .into_any_element(),
         };
+        let unread_count = self
+            .notifications
+            .iter()
+            .filter(|notification| notification.status == Some(UserNotificationStatus::Unread))
+            .count();
+        let unread_label = if unread_count > 99 {
+            "99+".to_string()
+        } else {
+            unread_count.to_string()
+        };
         let theme_preference = self.theme_preference;
         let has_saved_login = !self.saved_login_identities.is_empty();
         let view = cx.entity().clone();
@@ -179,14 +191,14 @@ impl MemosDesktop {
             .child(
                 v_flex()
                     .items_center()
-                    .gap_5()
+                    .gap_4()
                     .child(
                         div()
                             .relative()
-                            .size_9()
-                            .rounded(px(4.0))
-                            .bg(theme::color(0xf1f2ee))
-                            .text_color(theme::nav())
+                            .size_8()
+                            .rounded(px(6.0))
+                            .bg(theme::surface())
+                            .text_color(theme::ink())
                             .font_semibold()
                             .flex()
                             .items_center()
@@ -198,23 +210,48 @@ impl MemosDesktop {
                                     .right_0()
                                     .bottom_0()
                                     .size_2()
-                                    .bg(theme::vermilion()),
+                                    .rounded(px(1.0))
+                                    .bg(if self.connected {
+                                        theme::signal_green()
+                                    } else {
+                                        theme::vermilion()
+                                    }),
                             ),
                     )
                     .child(
                         v_flex()
                             .items_center()
-                            .gap_2()
-                            .child(self.nav_button(
-                                Route::Timeline,
-                                IconName::GalleryVerticalEnd,
-                                cx,
-                            ))
+                            .gap_1()
+                            .child(self.nav_button(Route::Timeline, IconName::BookOpen, cx))
                             .child(self.nav_button(Route::Explore, IconName::Globe, cx))
-                            .child(self.nav_button(Route::Views, IconName::LayoutDashboard, cx))
-                            .child(self.nav_button(Route::Archive, IconName::FolderClosed, cx))
                             .child(self.nav_button(Route::Attachments, IconName::File, cx))
-                            .child(self.nav_button(Route::Inbox, IconName::Bell, cx)),
+                            .child(
+                                div()
+                                    .relative()
+                                    .child(self.nav_button(Route::Inbox, IconName::Bell, cx))
+                                    .when(unread_count > 0, |item| {
+                                        item.child(
+                                            div()
+                                                .absolute()
+                                                .top(px(1.0))
+                                                .right(px(1.0))
+                                                .min_w(px(14.0))
+                                                .h(px(14.0))
+                                                .px_1()
+                                                .rounded(px(7.0))
+                                                .bg(theme::cobalt())
+                                                .text_xs()
+                                                .text_color(theme::surface())
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(unread_label),
+                                        )
+                                    }),
+                            )
+                            .child(div().h(px(1.0)).w(px(24.0)).my_2().bg(theme::nav_border()))
+                            .child(self.nav_button(Route::Views, IconName::LayoutDashboard, cx))
+                            .child(self.nav_button(Route::Archive, IconName::FolderClosed, cx)),
                     ),
             )
             .child(
@@ -251,28 +288,35 @@ impl MemosDesktop {
             .into_any_element()
     }
 
-    fn nav_button(&self, route: Route, icon: IconName, cx: &mut Context<Self>) -> impl IntoElement {
+    fn nav_button(&self, route: Route, icon: IconName, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.route == route;
         let requires_auth = matches!(
             route,
             Route::Views | Route::Archive | Route::Attachments | Route::Inbox | Route::Settings
         );
         let view = cx.entity().clone();
-        Button::new(gpui::SharedString::from(format!("nav-{:?}", route)))
-            .ghost()
-            .large()
-            .disabled(requires_auth && self.current_user.is_none())
-            .icon(Icon::new(icon).size_4())
-            .tooltip(route.title())
-            .when(selected, |button| button.primary())
-            .on_click(move |_, _, cx| {
-                view.update(cx, |this, cx| this.navigate(route, cx));
-            })
+        div()
+            .size_10()
+            .rounded(px(8.0))
+            .when(selected, |item| item.bg(theme::subtle_surface()))
+            .child(
+                Button::new(gpui::SharedString::from(format!("nav-{:?}", route)))
+                    .ghost()
+                    .large()
+                    .disabled(requires_auth && self.current_user.is_none())
+                    .icon(Icon::new(icon).size_4())
+                    .tooltip(route.title())
+                    .on_click(move |_, _, cx| {
+                        view.update(cx, |this, cx| this.navigate(route, cx));
+                    }),
+            )
+            .into_any_element()
     }
 
     fn render_context_panel(&self, cx: &mut Context<Self>) -> AnyElement {
         let visible = self.visible_memos();
         let tags = tag_counts(&self.memos);
+        let shortcuts = self.memo_views.clone();
         let version = self
             .instance
             .as_ref()
@@ -288,6 +332,11 @@ impl MemosDesktop {
                     .and_then(|profile| profile.instance_url.clone())
             })
             .unwrap_or_else(|| "Local preview".into());
+        let status_color = if self.connected {
+            theme::signal_green()
+        } else {
+            theme::graphite()
+        };
 
         v_flex()
             .id("context-panel")
@@ -296,35 +345,41 @@ impl MemosDesktop {
             .flex_shrink_0()
             .border_r_1()
             .border_color(theme::line())
-            .bg(theme::surface())
+            .bg(theme::paper())
             .child(
                 v_flex()
-                    .gap_1()
-                    .px_4()
+                    .gap_3()
+                    .px_3()
                     .pt_4()
                     .pb_3()
                     .border_b_1()
                     .border_color(theme::line())
                     .child(
+                        Input::new(&self.search_input)
+                            .prefix(Icon::new(IconName::Search).size_4())
+                            .cleanable(true),
+                    )
+                    .child(
                         h_flex()
                             .items_center()
-                            .justify_between()
-                            .child(div().text_sm().font_semibold().child("MEMOS"))
+                            .gap_2()
+                            .text_xs()
+                            .text_color(theme::graphite())
+                            .child(div().size_2().rounded(px(2.0)).bg(status_color))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child(server),
+                            )
                             .child(
                                 div()
                                     .font_family(theme::mono_family())
-                                    .text_xs()
                                     .text_color(theme::graphite())
                                     .child(format!("v{version}")),
                             ),
-                    )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(theme::graphite())
-                            .overflow_hidden()
-                            .text_ellipsis()
-                            .child(server),
                     ),
             )
             .child(
@@ -334,14 +389,53 @@ impl MemosDesktop {
                     .overflow_y_scrollbar()
                     .p_3()
                     .gap_5()
-                    .child(
-                        Input::new(&self.search_input)
-                            .prefix(Icon::new(IconName::Search).size_4())
-                            .cleanable(true),
-                    )
+                    .child(self.activity_calendar())
+                    .when(!shortcuts.is_empty(), |panel| {
+                        panel.child(
+                            v_flex().gap_2().child(panel_label("SHORTCUTS")).children(
+                                shortcuts.into_iter().take(6).enumerate().map(
+                                    |(index, shortcut)| {
+                                        let view = cx.entity().clone();
+                                        let filter = shortcut.filter.unwrap_or_default();
+                                        h_flex()
+                                            .id(gpui::SharedString::from(format!(
+                                                "shortcut-{index}"
+                                            )))
+                                            .w_full()
+                                            .min_h(px(30.0))
+                                            .px_1()
+                                            .items_center()
+                                            .gap_2()
+                                            .rounded(px(4.0))
+                                            .cursor_pointer()
+                                            .hover(|style| style.bg(theme::hover_surface()))
+                                            .on_click(move |_, _, cx| {
+                                                view.update(cx, |this, cx| {
+                                                    this.open_memo_view(filter.clone(), cx);
+                                                });
+                                            })
+                                            .child(
+                                                div()
+                                                    .flex_1()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .text_sm()
+                                                    .child(shortcut.title),
+                                            )
+                                            .child(
+                                                Icon::new(IconName::ArrowRight)
+                                                    .size_3()
+                                                    .text_color(theme::graphite()),
+                                            )
+                                    },
+                                ),
+                            ),
+                        )
+                    })
                     .child(
                         v_flex()
-                            .gap_1()
+                            .gap_2()
                             .child(panel_label("QUICK FILTERS"))
                             .children(
                                 [
@@ -364,66 +458,164 @@ impl MemosDesktop {
                     )
                     .child(
                         v_flex()
-                            .gap_1()
+                            .gap_2()
                             .child(panel_label("TAGS"))
                             .when(tags.is_empty(), |panel| {
                                 panel.child(
                                     div()
-                                        .px_2()
+                                        .px_3()
                                         .py_2()
+                                        .rounded(px(5.0))
+                                        .bg(theme::subtle_surface())
                                         .text_xs()
                                         .text_color(theme::graphite())
-                                        .child("No tags"),
+                                        .child("No tags in this view"),
                                 )
                             })
                             .children(tags.into_iter().take(12).map(|(tag, count)| {
+                                let selected = self.active_tag.as_deref() == Some(tag.as_str());
+                                let tag_view = cx.entity().clone();
+                                let tag_id = tag.clone();
                                 h_flex()
-                                    .px_2()
-                                    .py_1p5()
+                                    .id(gpui::SharedString::from(format!("tag-{tag}")))
+                                    .w_full()
+                                    .px_1()
+                                    .py_1()
                                     .items_center()
                                     .justify_between()
+                                    .rounded(px(4.0))
+                                    .cursor_pointer()
+                                    .when(selected, |row| {
+                                        row.bg(theme::pale_cobalt())
+                                            .text_color(theme::cobalt_dark())
+                                    })
+                                    .when(!selected, |row| {
+                                        row.text_color(theme::graphite())
+                                            .hover(|style| style.bg(theme::hover_surface()))
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        tag_view.update(cx, |this, cx| {
+                                            this.set_tag_filter(tag_id.clone(), cx);
+                                        });
+                                    })
                                     .text_sm()
-                                    .child(format!("#{tag}"))
+                                    .child(
+                                        h_flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_color(if selected {
+                                                        theme::cobalt_dark()
+                                                    } else {
+                                                        theme::cobalt()
+                                                    })
+                                                    .child("#"),
+                                            )
+                                            .child(tag),
+                                    )
                                     .child(
                                         div()
                                             .font_family(theme::mono_family())
                                             .text_xs()
-                                            .text_color(theme::graphite())
+                                            .text_color(if selected {
+                                                theme::cobalt_dark()
+                                            } else {
+                                                theme::graphite()
+                                            })
                                             .child(count.to_string()),
                                     )
                             })),
                     )
                     .child(
-                        v_flex().gap_1().child(panel_label("CURRENT RESULT")).child(
-                            h_flex()
-                                .px_2()
-                                .py_2()
-                                .justify_between()
-                                .text_sm()
-                                .child("Visible memos")
-                                .child(
-                                    div()
-                                        .font_family(theme::mono_family())
-                                        .text_color(theme::cobalt())
-                                        .child(visible.len().to_string()),
-                                ),
-                        ),
+                        v_flex()
+                            .gap_1()
+                            .border_t_1()
+                            .border_color(theme::line())
+                            .pt_3()
+                            .child(panel_label("VISIBLE"))
+                            .child(
+                                h_flex()
+                                    .items_baseline()
+                                    .gap_2()
+                                    .child(
+                                        div()
+                                            .font_family(theme::mono_family())
+                                            .text_xl()
+                                            .font_semibold()
+                                            .text_color(theme::cobalt_dark())
+                                            .child(visible.len().to_string()),
+                                    )
+                                    .child(div().text_xs().text_color(theme::graphite()).child(
+                                        if self.quick_filter == QuickFilter::All {
+                                            "memos in this view"
+                                        } else {
+                                            self.quick_filter.label()
+                                        },
+                                    )),
+                            ),
                     ),
             )
+            .into_any_element()
+    }
+
+    fn activity_calendar(&self) -> AnyElement {
+        let today = Local::now().date_naive();
+        let mut cells = Vec::with_capacity(28);
+        for offset in (0..28).rev() {
+            let date = today - Duration::days(offset);
+            let count = self
+                .memos
+                .iter()
+                .filter_map(|memo| memo.create_time)
+                .filter(|time| time.with_timezone(&Local).date_naive() == date)
+                .count();
+            let fill = match count {
+                0 => theme::subtle_surface(),
+                1 => theme::pale_cobalt(),
+                2 => theme::cobalt(),
+                _ => theme::cobalt_dark(),
+            };
+            cells.push(div().size_3().rounded(px(2.0)).bg(fill));
+        }
+
+        v_flex()
+            .gap_2()
+            .child(
+                h_flex()
+                    .items_center()
+                    .justify_between()
+                    .child(panel_label("ACTIVITY"))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme::graphite())
+                            .child("Last 4 weeks"),
+                    ),
+            )
+            .child(div().grid().grid_cols(7).gap_1().children(cells))
             .into_any_element()
     }
 
     fn filter_row(&self, filter: QuickFilter, count: usize, cx: &mut Context<Self>) -> AnyElement {
         let selected = self.quick_filter == filter;
         let view = cx.entity().clone();
+        let icon = match filter {
+            QuickFilter::All => IconName::BookOpen,
+            QuickFilter::Pinned => IconName::Star,
+            QuickFilter::Tasks => IconName::Inbox,
+            QuickFilter::Links => IconName::ExternalLink,
+            QuickFilter::Code => IconName::Bot,
+        };
         h_flex()
             .id(gpui::SharedString::from(format!("filter-{:?}", filter)))
             .w_full()
-            .h(px(34.0))
-            .px_2()
+            .h(px(38.0))
+            .px_3()
             .items_center()
             .justify_between()
-            .rounded(px(3.0))
+            .gap_3()
+            .rounded(px(6.0))
             .cursor_pointer()
             .when(selected, |row| {
                 row.bg(theme::pale_cobalt())
@@ -435,7 +627,17 @@ impl MemosDesktop {
             .on_click(move |_, _, cx| {
                 view.update(cx, |this, cx| this.set_quick_filter(filter, cx));
             })
-            .child(div().text_sm().child(filter.label()))
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap_3()
+                    .child(Icon::new(icon).size_4().text_color(if selected {
+                        theme::cobalt_dark()
+                    } else {
+                        theme::graphite()
+                    }))
+                    .child(div().text_sm().child(filter.label())),
+            )
             .child(
                 div()
                     .font_family(theme::mono_family())
@@ -445,7 +647,7 @@ impl MemosDesktop {
                     } else {
                         theme::graphite()
                     })
-                    .child(count.to_string()),
+                    .child(format!("{count:02}")),
             )
             .into_any_element()
     }
@@ -554,7 +756,7 @@ impl MemosDesktop {
 
     fn render_timeline_content(
         &mut self,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let memos = self.visible_memos();
@@ -569,10 +771,8 @@ impl MemosDesktop {
             self.route.title().to_string()
         };
         let subtitle = match self.route {
-            Route::Timeline if self.current_user.is_some() => "Private working stream".to_string(),
-            Route::Timeline => "Public memos from this instance".to_string(),
             Route::Archive => "Memos outside the active stream".to_string(),
-            Route::Explore => "Visible memos from this instance".to_string(),
+            Route::Explore => "Public memos from this instance".to_string(),
             Route::Profile => self
                 .profile_user
                 .as_ref()
@@ -593,11 +793,11 @@ impl MemosDesktop {
                 let name = user.name.as_deref().unwrap_or("users/profile");
                 match self.user_avatars.get(name) {
                     Some(path) => Avatar::new()
-                        .with_size(Size::Size(px(36.0)))
+                        .with_size(Size::Size(px(32.0)))
                         .src(path.clone())
                         .into_any_element(),
                     None => Avatar::new()
-                        .with_size(Size::Size(px(36.0)))
+                        .with_size(Size::Size(px(32.0)))
                         .name(
                             user.display_name
                                 .clone()
@@ -615,33 +815,44 @@ impl MemosDesktop {
         let loading_more = self.loading_more;
         let has_more = self.next_memo_page_token.is_some();
         let error = self.error.clone();
-
-        v_flex()
-            .id("content")
-            .flex_1()
-            .min_w_0()
-            .h_full()
+        let show_header = !is_timeline;
+        let header = h_flex()
+            .h(px(72.0))
+            .flex_shrink_0()
+            .items_center()
+            .justify_center()
+            .border_b_1()
+            .border_color(theme::line())
             .child(
                 h_flex()
-                    .h(px(64.0))
-                    .flex_shrink_0()
-                    .px_6()
+                    .w_full()
+                    .max_w(px(672.0))
+                    .px_4()
                     .items_center()
                     .justify_between()
-                    .border_b_1()
-                    .border_color(theme::line())
-                    .bg(theme::paper())
                     .child(
                         h_flex()
                             .items_center()
                             .gap_3()
+                            .min_w_0()
                             .when_some(profile_avatar, |header, avatar| header.child(avatar))
                             .child(
                                 v_flex()
+                                    .min_w_0()
                                     .gap_0p5()
-                                    .child(div().text_lg().font_semibold().child(title))
                                     .child(
                                         div()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .text_xl()
+                                            .font_semibold()
+                                            .child(title),
+                                    )
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
                                             .text_xs()
                                             .text_color(theme::graphite())
                                             .child(subtitle),
@@ -651,13 +862,13 @@ impl MemosDesktop {
                     .child(
                         h_flex()
                             .items_center()
-                            .gap_3()
+                            .gap_2()
                             .child(
                                 div()
                                     .font_family(theme::mono_family())
                                     .text_xs()
                                     .text_color(theme::graphite())
-                                    .child(format!("{count:02} ITEMS")),
+                                    .child(format!("{count:02} visible")),
                             )
                             .child(
                                 Button::new("refresh")
@@ -671,50 +882,63 @@ impl MemosDesktop {
                             ),
                     ),
             )
-            .when(can_create, |content| {
-                content.child(self.render_composer(cx))
-            })
-            .when_some(error, |content, error| {
-                content.child(
-                    h_flex()
-                        .mx_6()
-                        .mt_4()
-                        .p_3()
-                        .gap_2()
-                        .border_1()
-                        .border_color(theme::error_border())
-                        .bg(theme::error_background())
-                        .text_sm()
-                        .text_color(theme::error_text())
-                        .child(Icon::new(IconName::TriangleAlert).size_4())
-                        .child(error),
-                )
-            })
+            .into_any_element();
+        let error = error.map(|error| {
+            h_flex()
+                .w_full()
+                .p_3()
+                .gap_2()
+                .items_start()
+                .border_1()
+                .border_color(theme::error_border())
+                .bg(theme::error_background())
+                .text_sm()
+                .text_color(theme::error_text())
+                .child(Icon::new(IconName::TriangleAlert).size_4())
+                .child(div().flex_1().min_w_0().child(error))
+                .into_any_element()
+        });
+        let list = v_flex()
+            .id("timeline-scroll")
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scrollbar()
             .child(
                 v_flex()
-                    .id("timeline-scroll")
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_y_scrollbar()
-                    .when(memos.is_empty() && loading, |list| {
-                        list.child(
+                    .w_full()
+                    .max_w(px(672.0))
+                    .mx_auto()
+                    .px_4()
+                    .pt(if show_header { px(20.0) } else { px(28.0) })
+                    .pb_6()
+                    .gap_2()
+                    .when(can_create, |content| {
+                        content.child(self.render_composer(cx))
+                    })
+                    .when_some(error, |content, error| content.child(error))
+                    .when(memos.is_empty() && loading, |content| {
+                        content.child(
                             v_flex()
-                                .min_h(px(220.0))
+                                .min_h(px(260.0))
                                 .items_center()
                                 .justify_center()
                                 .child(Spinner::new().large()),
                         )
                     })
-                    .when(memos.is_empty() && !loading, |list| {
-                        list.child(empty_state(
+                    .when(memos.is_empty() && !loading, |content| {
+                        content.child(empty_state(
                             IconName::BookOpen,
                             "No memos in this view",
                             "Change the filter or capture a new memo.",
                         ))
                     })
-                    .children(memos.into_iter().map(|memo| self.render_memo_row(memo, cx)))
-                    .when(has_more, |list| {
-                        list.child(
+                    .children(
+                        memos
+                            .into_iter()
+                            .map(|memo| self.render_memo_row(memo, window, cx)),
+                    )
+                    .when(has_more, |content| {
+                        content.child(
                             h_flex().w_full().justify_center().p_4().child(
                                 Button::new("load-more-memos")
                                     .outline()
@@ -726,37 +950,50 @@ impl MemosDesktop {
                             ),
                         )
                     }),
-            )
+            );
+
+        v_flex()
+            .id("content")
+            .flex_1()
+            .min_w_0()
+            .h_full()
+            .bg(theme::paper())
+            .when(show_header, |page| page.child(header))
+            .child(list)
             .into_any_element()
     }
 
     fn render_composer(&self, cx: &mut Context<Self>) -> AnyElement {
         let saving = self.saving;
         v_flex()
-            .mx_6()
-            .mt_5()
-            .mb_3()
+            .w_full()
             .border_1()
-            .border_color(theme::line_strong())
+            .border_color(theme::line())
             .bg(theme::surface())
-            .rounded(px(4.0))
+            .rounded(px(8.0))
+            .px_4()
+            .pt_3()
+            .pb_2()
+            .gap_2()
             .child(
                 Input::new(&self.composer_input)
                     .appearance(false)
                     .bordered(false)
                     .focus_bordered(false)
-                    .h(px(116.0)),
+                    .p_0()
+                    .h(px(112.0)),
             )
             .child(
                 h_flex()
-                    .min_h(px(44.0))
-                    .px_3()
+                    .min_h(px(36.0))
                     .items_center()
                     .justify_between()
                     .border_t_1()
                     .border_color(theme::line())
+                    .pt_2()
                     .child(
                         h_flex()
+                            .items_center()
                             .gap_1()
                             .child(self.visibility_button(
                                 MemoVisibility::Private,
@@ -787,26 +1024,14 @@ impl MemosDesktop {
                             ),
                     )
                     .child(
-                        h_flex()
-                            .gap_3()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::graphite())
-                                    .child("Ctrl+Enter"),
-                            )
-                            .child(
-                                Button::new("save-memo")
-                                    .primary()
-                                    .small()
-                                    .icon(IconName::Plus)
-                                    .label("Save")
-                                    .loading(saving)
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.save_memo(window, cx);
-                                    })),
-                            ),
+                        Button::new("save-memo")
+                            .primary()
+                            .small()
+                            .label("Save")
+                            .loading(saving)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.save_memo(window, cx);
+                            })),
                     ),
             )
             .into_any_element()
@@ -994,130 +1219,238 @@ impl MemosDesktop {
         )
     }
 
-    fn render_memo_row(&self, memo: Memo, cx: &mut Context<Self>) -> AnyElement {
+    fn render_memo_row(
+        &self,
+        memo: Memo,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let name = memo.name.clone().unwrap_or_else(|| "memos/unknown".into());
         let selected = self.selected_memo_name.as_deref() == Some(name.as_str());
         let view = cx.entity().clone();
+        let menu_view = cx.entity().clone();
+        let menu_edit_view = cx.entity().clone();
+        let menu_memo = memo.clone();
+        let menu_name = name.clone();
+        let menu_pin_name = name.clone();
+        let menu_archive_name = name.clone();
         let profile_view = cx.entity().clone();
         let creator = memo.creator.clone();
-        let title = memo
-            .property
-            .as_ref()
-            .and_then(|property| property.title.clone());
-        let excerpt = memo_excerpt(&memo.content, title.as_deref());
-        let visibility = visibility_label(memo.visibility);
         let timestamp = memo.create_time;
+        let pinned = memo.pinned.unwrap_or(false);
+        let attachment_count = memo.attachments.len();
+        let reaction_count = memo.reactions.len();
+        let can_manage = self.can_manage_memo(&memo);
+        let show_creator = matches!(self.route, Route::Explore | Route::Profile);
         let gallery = self.attachment_gallery(&memo.attachments, 6, 118.0, "timeline", cx);
         let creator_user = creator
             .as_deref()
             .and_then(|name| self.known_users.get(name));
         let creator_label = creator_user
             .and_then(|user| user.display_name.clone())
-            .or_else(|| creator_user.map(|user| user.username.clone()));
+            .or_else(|| creator_user.map(|user| user.username.clone()))
+            .unwrap_or_else(|| {
+                creator
+                    .as_deref()
+                    .map(resource_id)
+                    .unwrap_or_else(|| "Unknown author".into())
+            });
+        let header_identity = if show_creator {
+            if let Some(creator) = creator.clone() {
+                let avatar = self.user_avatar(&creator, 28.0);
+                let profile_view = profile_view.clone();
+                h_flex()
+                    .id(gpui::SharedString::from(format!("memo-author-{creator}")))
+                    .items_center()
+                    .gap_2()
+                    .min_w_0()
+                    .cursor_pointer()
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        profile_view.update(cx, |this, cx| {
+                            this.open_user_profile(creator.clone(), cx);
+                        });
+                    })
+                    .child(avatar)
+                    .child(
+                        v_flex()
+                            .min_w_0()
+                            .gap_0p5()
+                            .child(
+                                div()
+                                    .max_w(px(180.0))
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .text_sm()
+                                    .font_medium()
+                                    .child(creator_label.clone()),
+                            )
+                            .child(div().text_xs().text_color(theme::graphite()).child(
+                                timestamp.map(relative_time).unwrap_or_else(|| "now".into()),
+                            )),
+                    )
+                    .into_any_element()
+            } else {
+                div()
+                    .text_sm()
+                    .text_color(theme::graphite())
+                    .child("Unknown author")
+                    .into_any_element()
+            }
+        } else {
+            div()
+                .text_sm()
+                .text_color(theme::graphite())
+                .child(timestamp.map(relative_time).unwrap_or_else(|| "now".into()))
+                .into_any_element()
+        };
+        let visibility_icon = match memo.visibility {
+            MemoVisibility::Private => IconName::EyeOff,
+            MemoVisibility::Protected => IconName::User,
+            MemoVisibility::Public => IconName::Globe,
+            MemoVisibility::VisibilityUnspecified => IconName::EyeOff,
+        };
+        let header_actions = h_flex()
+            .items_center()
+            .gap_2()
+            .flex_shrink_0()
+            .when(memo.visibility != MemoVisibility::Private, |actions| {
+                actions.child(
+                    Icon::new(visibility_icon)
+                        .size_4()
+                        .text_color(visibility_color(memo.visibility)),
+                )
+            })
+            .when(pinned, |actions| {
+                actions.child(
+                    Icon::new(IconName::Star)
+                        .size_4()
+                        .text_color(theme::cobalt_dark()),
+                )
+            });
+        let body = TextView::markdown(
+            gpui::SharedString::from(format!("memo-content-{name}")),
+            memo.content.clone(),
+            window,
+            cx,
+        )
+        .selectable(true)
+        .w_full();
 
-        h_flex()
+        v_flex()
             .id(gpui::SharedString::from(format!("memo-{name}")))
             .w_full()
-            .border_b_1()
-            .border_color(theme::line())
-            .cursor_pointer()
-            .when(selected, |row| row.bg(theme::pale_cobalt()))
-            .when(!selected, |row| {
-                row.hover(|style| style.bg(theme::hover_surface()))
+            .border_1()
+            .border_color(if selected {
+                theme::cobalt()
+            } else {
+                theme::line()
             })
+            .bg(theme::surface())
+            .rounded(px(8.0))
+            .cursor_pointer()
+            .hover(|style| style.bg(theme::hover_surface()))
             .on_click(move |_, _, cx| {
                 view.update(cx, |this, cx| {
                     this.select_memo(Some(name.clone()), cx);
                 });
             })
-            .child(
-                v_flex()
-                    .w(px(96.0))
-                    .flex_shrink_0()
-                    .items_end()
-                    .pt_5()
-                    .pr_4()
-                    .border_r_1()
-                    .border_color(theme::line())
-                    .child(
-                        div()
-                            .font_family(theme::mono_family())
-                            .text_xs()
-                            .text_color(theme::graphite())
-                            .child(timestamp.map(relative_time).unwrap_or_else(|| "now".into())),
-                    )
-                    .when(memo.pinned.unwrap_or(false), |column| {
-                        column.child(div().mt_2().size_1p5().bg(theme::vermilion()))
+            .context_menu(move |menu, _, _| {
+                let edit_view = menu_edit_view.clone();
+                let edit_memo = menu_memo.clone();
+                let open_view = menu_view.clone();
+                let pin_view = menu_view.clone();
+                let archive_view = menu_view.clone();
+                let open_name = menu_name.clone();
+                let pin_name = menu_pin_name.clone();
+                let archive_name = menu_archive_name.clone();
+                menu.item(
+                    PopupMenuItem::new("Open memo")
+                        .icon(IconName::ArrowRight)
+                        .on_click(move |_, _, cx| {
+                            open_view.update(cx, |this, cx| {
+                                this.select_memo(Some(open_name.clone()), cx);
+                            });
+                        }),
+                )
+                .item(
+                    PopupMenuItem::new("Edit")
+                        .icon(IconName::Replace)
+                        .disabled(!can_manage)
+                        .on_click(move |_, window, cx| {
+                            edit_view.update(cx, |this, cx| {
+                                this.open_edit_memo_dialog(edit_memo.clone(), window, cx);
+                            });
+                        }),
+                )
+                .item(
+                    PopupMenuItem::new(if pinned { "Unpin" } else { "Pin" })
+                        .icon(if pinned {
+                            IconName::StarOff
+                        } else {
+                            IconName::Star
+                        })
+                        .disabled(!can_manage)
+                        .on_click(move |_, _, cx| {
+                            pin_view.update(cx, |this, cx| {
+                                this.toggle_pin(pin_name.clone(), cx);
+                            });
+                        }),
+                )
+                .item(
+                    PopupMenuItem::new(if memo.state == MemoState::Archived {
+                        "Restore"
+                    } else {
+                        "Archive"
+                    })
+                    .icon(IconName::FolderClosed)
+                    .disabled(!can_manage)
+                    .on_click(move |_, _, cx| {
+                        archive_view.update(cx, |this, cx| {
+                            this.toggle_archive(archive_name.clone(), cx);
+                        });
                     }),
-            )
+                )
+            })
             .child(
-                v_flex()
-                    .flex_1()
-                    .min_w_0()
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .justify_between()
                     .gap_3()
-                    .px_5()
-                    .py_5()
-                    .when_some(title, |body, title| {
-                        body.child(div().text_base().font_semibold().child(title))
-                    })
-                    .child(
-                        div()
-                            .text_sm()
-                            .line_height(px(22.0))
-                            .text_color(theme::ink())
-                            .whitespace_normal()
-                            .child(excerpt),
-                    )
-                    .when_some(gallery, |body, gallery| body.child(gallery))
-                    .when(!memo.tags.is_empty(), |body| {
-                        body.child(h_flex().gap_3().flex_wrap().children(memo.tags.iter().map(
-                            |tag| {
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::cobalt_dark())
-                                    .child(format!("#{tag}"))
-                            },
-                        )))
-                    })
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_3()
-                            .text_xs()
-                            .text_color(theme::graphite())
-                            .when_some(creator, |metadata, creator| {
-                                let label = creator_label
-                                    .clone()
-                                    .unwrap_or_else(|| format!("@{}", resource_id(&creator)));
-                                let avatar = self.user_avatar(&creator, 20.0);
-                                metadata.child(
-                                    h_flex()
-                                        .id(gpui::SharedString::from(format!(
-                                            "memo-creator-{creator}"
-                                        )))
-                                        .items_center()
-                                        .gap_1()
-                                        .cursor_pointer()
-                                        .hover(|style| style.text_color(theme::cobalt_dark()))
-                                        .on_click(move |_, _, cx| {
-                                            cx.stop_propagation();
-                                            profile_view.update(cx, |this, cx| {
-                                                this.open_user_profile(creator.clone(), cx);
-                                            });
-                                        })
-                                        .child(avatar)
-                                        .child(label),
-                                )
-                            })
-                            .child(visibility)
-                            .when(!memo.attachments.is_empty(), |metadata| {
-                                metadata.child(format!("{} attachments", memo.attachments.len()))
-                            })
-                            .when(!memo.reactions.is_empty(), |metadata| {
-                                metadata.child(format!("{} reactions", memo.reactions.len()))
-                            }),
-                    ),
+                    .px_4()
+                    .pt_3()
+                    .child(header_identity)
+                    .child(header_actions),
             )
+            .child(div().w_full().px_4().pt_2().child(body))
+            .when_some(gallery, |card, gallery| {
+                card.child(div().w_full().px_4().pt_2().child(gallery))
+            })
+            .when(attachment_count > 0 || reaction_count > 0, |card| {
+                card.child(
+                    h_flex()
+                        .items_center()
+                        .gap_3()
+                        .px_4()
+                        .pt_2()
+                        .pb_3()
+                        .text_xs()
+                        .text_color(theme::graphite())
+                        .when(attachment_count > 0, |meta| {
+                            meta.child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(Icon::new(IconName::File).size_3())
+                                    .child(format!("{attachment_count} attachments")),
+                            )
+                        })
+                        .when(reaction_count > 0, |meta| {
+                            meta.child(format!("{reaction_count} reactions"))
+                        }),
+                )
+            })
             .into_any_element()
     }
 
@@ -1345,7 +1678,7 @@ impl MemosDesktop {
             .flex_shrink_0()
             .border_l_1()
             .border_color(theme::line())
-            .bg(theme::surface())
+            .bg(theme::paper())
             .child(
                 h_flex()
                     .h(px(64.0))
@@ -1355,10 +1688,11 @@ impl MemosDesktop {
                     .justify_between()
                     .border_b_1()
                     .border_color(theme::line())
+                    .bg(theme::paper())
                     .child(
                         v_flex()
                             .gap_0p5()
-                            .child(div().text_sm().font_semibold().child("Memo detail"))
+                            .child(div().text_base().font_semibold().child("Memo detail"))
                             .child(
                                 div()
                                     .font_family(theme::mono_family())
@@ -1387,35 +1721,51 @@ impl MemosDesktop {
                         h_flex()
                             .items_center()
                             .justify_between()
+                            .border_t_1()
+                            .border_color(theme::line())
+                            .pt_3()
                             .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(theme::graphite())
-                                    .child(timestamp),
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .font_family(theme::mono_family())
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .child("CREATED"),
+                                    )
+                                    .child(div().text_sm().font_semibold().child(timestamp)),
                             )
                             .child(
-                                div()
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
                                     .text_xs()
                                     .font_semibold()
                                     .text_color(visibility_color(memo.visibility))
+                                    .child(
+                                        div()
+                                            .size_2()
+                                            .rounded(px(2.0))
+                                            .bg(visibility_color(memo.visibility)),
+                                    )
                                     .child(visibility_label(memo.visibility)),
                             ),
                     )
                     .child(self.render_detail_panel(window, cx, memo.clone(), name.clone()))
                     .when(!memo.tags.is_empty(), |panel| {
-                        panel.child(h_flex().gap_2().flex_wrap().children(memo.tags.iter().map(
-                            |tag| {
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .border_1()
-                                    .border_color(theme::line())
-                                    .rounded(px(3.0))
-                                    .text_xs()
-                                    .text_color(theme::cobalt_dark())
-                                    .child(format!("#{tag}"))
-                            },
-                        )))
+                        panel.child(
+                            v_flex().gap_2().child(panel_label("TAGS")).child(
+                                h_flex().gap_2().flex_wrap().children(memo.tags.iter().map(
+                                    |tag| {
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme::cobalt_dark())
+                                            .child(format!("#{tag}"))
+                                    },
+                                )),
+                            ),
+                        )
                     })
                     .when(can_manage, |panel| {
                         panel.child(
@@ -1553,8 +1903,9 @@ impl MemosDesktop {
             .child(
                 h_flex()
                     .gap_1()
-                    .border_b_1()
-                    .border_color(theme::line())
+                    .p_1()
+                    .rounded(px(7.0))
+                    .bg(theme::subtle_surface())
                     .child(self.detail_tab_button(DetailTab::Content, cx))
                     .child(self.detail_tab_button(DetailTab::Activity, cx))
                     .child(self.detail_tab_button(DetailTab::Links, cx))
@@ -4437,8 +4788,8 @@ fn panel_label(label: &'static str) -> impl IntoElement {
     div()
         .px_2()
         .pb_1()
-        .font_family(theme::mono_family())
         .text_xs()
+        .font_semibold()
         .text_color(theme::graphite())
         .child(label)
 }
@@ -4454,28 +4805,40 @@ fn module_page(
         .min_w_0()
         .h_full()
         .child(
-            v_flex()
-                .h(px(88.0))
+            h_flex()
+                .h(px(72.0))
                 .flex_shrink_0()
-                .px_6()
+                .items_center()
                 .justify_center()
                 .border_b_1()
                 .border_color(theme::line())
-                .child(div().text_lg().font_semibold().child(title))
                 .child(
-                    div()
-                        .text_xs()
-                        .text_color(theme::graphite())
-                        .child(subtitle),
+                    v_flex()
+                        .w_full()
+                        .max_w(px(960.0))
+                        .mx_auto()
+                        .px_4()
+                        .gap_0p5()
+                        .child(div().text_xl().font_semibold().child(title))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme::graphite())
+                                .child(subtitle),
+                        ),
                 ),
         )
         .child(
-            v_flex()
-                .flex_1()
-                .min_h_0()
-                .overflow_y_scrollbar()
-                .p_6()
-                .child(content),
+            v_flex().flex_1().min_h_0().overflow_y_scrollbar().child(
+                v_flex()
+                    .w_full()
+                    .max_w(px(960.0))
+                    .mx_auto()
+                    .px_4()
+                    .pt_5()
+                    .pb_8()
+                    .child(content),
+            ),
         )
         .into_any_element()
 }

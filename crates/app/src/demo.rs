@@ -1,6 +1,7 @@
 use chrono::{Duration, Utc};
 use memos_api::types::{
-    InstanceProfile, Memo, MemoProperty, MemoState, MemoVisibility, User, UserRole, UserState,
+    InstanceProfile, Memo, MemoProperty, MemoState, MemoVisibility, Shortcut, User, UserRole,
+    UserState,
 };
 
 pub fn instance() -> InstanceProfile {
@@ -28,6 +29,21 @@ pub fn user() -> User {
         update_time: Some(Utc::now() - Duration::days(2)),
         username: "lin".into(),
     }
+}
+
+pub fn shortcuts() -> Vec<Shortcut> {
+    vec![
+        Shortcut {
+            filter: Some("pinned == true".into()),
+            name: Some("users/lin/shortcuts/pinned".into()),
+            title: "Pinned".into(),
+        },
+        Shortcut {
+            filter: Some("has_task_list == true".into()),
+            name: Some("users/lin/shortcuts/tasks".into()),
+            title: "Open tasks".into(),
+        },
+    ]
 }
 
 pub fn memos() -> Vec<Memo> {

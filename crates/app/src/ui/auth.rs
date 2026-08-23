@@ -80,7 +80,7 @@ impl MemosDesktop {
                     .justify_between()
                     .p_8()
                     .bg(theme::nav())
-                    .text_color(theme::color(0xf2f3ef))
+                    .text_color(theme::ink())
                     .child(
                         v_flex()
                             .gap_8()
@@ -93,8 +93,8 @@ impl MemosDesktop {
                                             .relative()
                                             .size_10()
                                             .rounded(px(4.0))
-                                            .bg(theme::color(0xf2f3ef))
-                                            .text_color(theme::nav())
+                                            .bg(theme::surface())
+                                            .text_color(theme::ink())
                                             .text_lg()
                                             .font_semibold()
                                             .flex()
@@ -122,7 +122,7 @@ impl MemosDesktop {
                                             .child(
                                                 div()
                                                     .text_xs()
-                                                    .text_color(theme::color(0xaeb3ba))
+                                                    .text_color(theme::graphite())
                                                     .child(concat!(
                                                         "Native client / v",
                                                         env!("CARGO_PKG_VERSION")
@@ -145,7 +145,7 @@ impl MemosDesktop {
                                         v_flex()
                                             .gap_3()
                                             .text_sm()
-                                            .text_color(theme::color(0xb9bec5))
+                                            .text_color(theme::graphite())
                                             .child(status_row("01", "Server profile"))
                                             .child(status_row("02", "Session authentication"))
                                             .child(status_row("03", "Timeline synchronization")),
@@ -156,7 +156,7 @@ impl MemosDesktop {
                         v_flex()
                             .gap_2()
                             .text_xs()
-                            .text_color(theme::color(0x7f858e))
+                            .text_color(theme::graphite())
                             .child("Passwords are stored only in the system credential store.")
                             .child("Successful password sign-in resumes automatically next time."),
                     ),
