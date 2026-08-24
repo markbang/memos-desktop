@@ -43,6 +43,7 @@ Status values:
 | AI | Select audio and insert server transcription into the composer | Done |
 | Live updates | Authenticated SSE reconnect and memo/comment/reaction refresh | Done |
 | Desktop | System/light/dark themes, user avatars, context menu, and secure auto-login | Done |
+| Desktop | Hourly/manual update checks, verified Linux/macOS installer updates, explicit restart, and external-install notifications | Done |
 | Desktop UI | Memos v0.30 Web-style navigation, centered feed, Markdown cards, and contextual detail inspector | Foundation |
 | Desktop | Multi-profile connection switcher | Desktop roadmap |
 | Desktop | System tray and global quick capture | Desktop roadmap |

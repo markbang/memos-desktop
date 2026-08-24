@@ -6,8 +6,17 @@ The project follows [Semantic Versioning](https://semver.org/) and uses GitHub R
 
 ## Unreleased
 
+## 0.1.1 - 2026-08-24
+
+### Added
+
+- Add Zed-style automatic update state, hourly and manual checks, verified in-place Linux/macOS installer updates, explicit restart, and external-install notifications.
+- Add a repository instruction requiring Zed-first GPUI research while preserving the Apache-2.0/GPL licensing boundary.
+
 ### Changed
 
+- Align the native workspace with the Memos v0.30 Web navigation, centered feed, Markdown cards, composer hierarchy, and contextual detail presentation.
+- Add representative anonymized native-client screenshots and document Web UI parity as the product direction.
 - Stream cached attachments to disk with explicit avatar, preview, and original-file size limits.
 - Limit concurrent avatar and attachment downloads per authenticated session.
 

@@ -14,6 +14,7 @@ pub struct AppConfig {
     pub server_url: String,
     pub username: String,
     pub auto_login: bool,
+    pub auto_update: bool,
     pub theme: ThemePreference,
 }
 
@@ -23,6 +24,7 @@ impl Default for AppConfig {
             server_url: String::new(),
             username: String::new(),
             auto_login: false,
+            auto_update: true,
             theme: ThemePreference::System,
         }
     }
@@ -125,6 +127,7 @@ mod tests {
         )
         .unwrap();
         assert!(!config.auto_login);
+        assert!(config.auto_update);
         assert_eq!(config.theme, ThemePreference::System);
     }
 
@@ -137,6 +140,7 @@ mod tests {
             server_url: "https://one.example.com".into(),
             username: "alice".into(),
             auto_login: true,
+            auto_update: true,
             theme: ThemePreference::Light,
         };
         first.save_to_path(&path).unwrap();
@@ -145,6 +149,7 @@ mod tests {
             server_url: "https://two.example.com".into(),
             username: "bob".into(),
             auto_login: false,
+            auto_update: false,
             theme: ThemePreference::Dark,
         };
         second.save_to_path(&path).unwrap();
@@ -153,6 +158,7 @@ mod tests {
         assert_eq!(loaded.server_url, second.server_url);
         assert_eq!(loaded.username, second.username);
         assert_eq!(loaded.auto_login, second.auto_login);
+        assert_eq!(loaded.auto_update, second.auto_update);
         assert_eq!(loaded.theme, second.theme);
         assert!(!backup_path(&path).exists());
         fs::remove_dir_all(root).unwrap();
@@ -204,6 +210,7 @@ mod tests {
             server_url: "https://memos.example.com".into(),
             username: "alice".into(),
             auto_login: true,
+            auto_update: true,
             theme: ThemePreference::System,
         }
     }

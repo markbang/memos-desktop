@@ -1,5 +1,6 @@
 mod api;
 mod api_ext;
+mod auto_update;
 mod config;
 mod credentials;
 mod demo;

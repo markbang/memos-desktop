@@ -12,10 +12,13 @@ use std::{
 
 use chrono::Utc;
 use gpui::{
-    AnyElement, AppContext, Context, Entity, IntoElement, PathPromptOptions, Render, Subscription,
-    Window,
+    AnyElement, AppContext, Context, Entity, IntoElement, ParentElement, PathPromptOptions, Render,
+    Styled, Subscription, Window, div, prelude::FluentBuilder as _,
 };
-use gpui_component::input::{InputEvent, InputState};
+use gpui_component::{
+    input::{InputEvent, InputState},
+    v_flex,
+};
 use memos_api::types::{
     Attachment, IdentityProvider, InstanceProfile, InstanceSetting, InstanceStats, LinkMetadata,
     LinkedIdentity, ListAllUserStatsResponse, Memo, MemoProperty, MemoState, MemoVisibility,
@@ -25,6 +28,7 @@ use tokio::runtime::Runtime;
 
 use crate::{
     api::{ApiSession, MemoDetailData},
+    auto_update::{self, AutoUpdateStatus, Installation},
     config::AppConfig,
     credentials, demo,
     theme::{self, ThemePreference},
@@ -192,6 +196,11 @@ pub struct MemosDesktop {
     saving: bool,
     error: Option<String>,
     notice: Option<String>,
+    auto_update_enabled: bool,
+    update_check_running: bool,
+    update_check_manual: bool,
+    update_installation: Installation,
+    update_status: AutoUpdateStatus,
 
     session: Option<ApiSession>,
     instance: Option<InstanceProfile>,
@@ -240,6 +249,19 @@ pub struct MemosDesktop {
 impl MemosDesktop {
     pub fn new(demo_mode: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let config = AppConfig::load();
+        let current_version = auto_update::current_version();
+        let update_status = match auto_update::take_completed_update(&current_version) {
+            Ok(Some(version)) => AutoUpdateStatus::Updated {
+                html_url: auto_update::release_url_for_version(&version),
+                version,
+            },
+            Ok(None) => AutoUpdateStatus::Idle,
+            Err(error) => AutoUpdateStatus::Errored {
+                message: format!("Could not read completed update state: {error}"),
+            },
+        };
+        let auto_update_enabled = config.auto_update;
+        let update_installation = auto_update::detect_installation();
         let server_url = if config.server_url.is_empty() {
             "http://localhost:5230".to_string()
         } else {
@@ -314,6 +336,11 @@ impl MemosDesktop {
             saving: false,
             error: None,
             notice: None,
+            auto_update_enabled,
+            update_check_running: false,
+            update_check_manual: false,
+            update_installation,
+            update_status,
             session: None,
             instance,
             current_user,
@@ -361,7 +388,242 @@ impl MemosDesktop {
         } else if config.auto_login {
             desktop.start_auto_login(config, cx);
         }
+        desktop.start_auto_update_polling(cx);
         desktop
+    }
+
+    fn start_auto_update_polling(&mut self, cx: &mut Context<Self>) {
+        if self.demo_mode {
+            return;
+        }
+        _ = self
+            .runtime
+            .spawn_blocking(auto_update::cleanup_stale_update_directories);
+        let initial_delay = if matches!(&self.update_status, AutoUpdateStatus::Updated { .. }) {
+            auto_update::POLL_INTERVAL
+        } else {
+            auto_update::INITIAL_CHECK_DELAY
+        };
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(initial_delay).await;
+            loop {
+                if this
+                    .update(cx, |this, cx| {
+                        if this.auto_update_enabled {
+                            this.check_for_updates(false, cx);
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+                cx.background_executor()
+                    .timer(auto_update::POLL_INTERVAL)
+                    .await;
+            }
+        })
+        .detach();
+    }
+
+    fn check_for_updates(&mut self, manual: bool, cx: &mut Context<Self>) {
+        if self.demo_mode
+            || self.update_check_running
+            || matches!(
+                &self.update_status,
+                AutoUpdateStatus::Downloading { .. }
+                    | AutoUpdateStatus::Installing { .. }
+                    | AutoUpdateStatus::ReadyToRestart { .. }
+            )
+        {
+            return;
+        }
+
+        let previous_status = self.update_status.clone();
+        let automatic_fallback = match &previous_status {
+            AutoUpdateStatus::Updated { .. } | AutoUpdateStatus::Available { .. } => {
+                previous_status.clone()
+            }
+            _ => AutoUpdateStatus::Idle,
+        };
+        self.update_check_running = true;
+        self.update_check_manual = manual;
+        self.update_status = AutoUpdateStatus::Checking;
+        cx.notify();
+
+        let runtime = self.runtime.clone();
+        let current_version = auto_update::current_version();
+        let installation = self.update_installation.clone();
+        cx.spawn(async move |this, cx| {
+            let check = runtime
+                .spawn(async move { auto_update::check_for_update(&current_version).await })
+                .await;
+            let release = match flatten_update_task(check) {
+                Ok(Some(release)) => release,
+                Ok(None) => {
+                    _ = this.update(cx, |this, cx| {
+                        this.complete_update_check(
+                            if manual {
+                                AutoUpdateStatus::UpToDate
+                            } else {
+                                automatic_fallback.clone()
+                            },
+                            cx,
+                        );
+                    });
+                    return;
+                }
+                Err(message) => {
+                    _ = this.update(cx, |this, cx| {
+                        this.fail_update_check(message, manual, automatic_fallback.clone(), cx);
+                    });
+                    return;
+                }
+            };
+
+            if let Some(reason) = installation.external_reason() {
+                let reason = reason.to_string();
+                _ = this.update(cx, |this, cx| {
+                    this.complete_update_check(AutoUpdateStatus::Available { release, reason }, cx);
+                });
+                return;
+            }
+
+            if this
+                .update(cx, |this, cx| {
+                    this.update_status = AutoUpdateStatus::Downloading {
+                        release: release.clone(),
+                    };
+                    cx.notify();
+                })
+                .is_err()
+            {
+                return;
+            }
+
+            let download_release = release.clone();
+            let download =
+                runtime
+                    .spawn(async move {
+                        auto_update::download_verified_installer(&download_release).await
+                    })
+                    .await;
+            let prepared = match flatten_update_task(download) {
+                Ok(prepared) => prepared,
+                Err(message) => {
+                    _ = this.update(cx, |this, cx| {
+                        this.fail_update_check(message, manual, automatic_fallback.clone(), cx);
+                    });
+                    return;
+                }
+            };
+
+            if this
+                .update(cx, |this, cx| {
+                    this.update_status = AutoUpdateStatus::Installing {
+                        release: release.clone(),
+                    };
+                    cx.notify();
+                })
+                .is_err()
+            {
+                return;
+            }
+
+            let install_release = release.clone();
+            let install_strategy = installation.clone();
+            let install = runtime
+                .spawn(async move {
+                    auto_update::install_update(prepared, &install_release, &install_strategy).await
+                })
+                .await;
+            if let Err(message) = flatten_update_task(install) {
+                _ = this.update(cx, |this, cx| {
+                    this.fail_update_check(message, manual, automatic_fallback.clone(), cx);
+                });
+                return;
+            }
+
+            _ = this.update(cx, |this, cx| {
+                if let Err(error) = auto_update::record_completed_update(&release.version) {
+                    this.notice = Some(format!(
+                        "The update was installed, but restart tracking could not be saved: {error}"
+                    ));
+                }
+                this.complete_update_check(AutoUpdateStatus::ReadyToRestart { release }, cx);
+            });
+        })
+        .detach();
+    }
+
+    fn complete_update_check(&mut self, status: AutoUpdateStatus, cx: &mut Context<Self>) {
+        self.update_check_running = false;
+        self.update_status = status;
+        cx.notify();
+    }
+
+    fn fail_update_check(
+        &mut self,
+        message: String,
+        manual: bool,
+        automatic_fallback: AutoUpdateStatus,
+        cx: &mut Context<Self>,
+    ) {
+        self.complete_update_check(
+            if manual {
+                AutoUpdateStatus::Errored { message }
+            } else {
+                automatic_fallback
+            },
+            cx,
+        );
+    }
+
+    fn set_auto_update_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        let mut config = AppConfig::load();
+        config.auto_update = enabled;
+        match config.save() {
+            Ok(()) => {
+                self.auto_update_enabled = enabled;
+                if enabled {
+                    self.check_for_updates(false, cx);
+                }
+            }
+            Err(error) => {
+                self.error = Some(format!("Could not save update preference: {error}"));
+            }
+        }
+        cx.notify();
+    }
+
+    fn restart_after_update(&mut self, cx: &mut Context<Self>) {
+        if matches!(&self.update_status, AutoUpdateStatus::ReadyToRestart { .. })
+            && let Some(path) = self.update_installation.restart_path()
+        {
+            if path.is_file() {
+                cx.set_restart_path(path);
+                cx.restart();
+            } else {
+                self.update_status = AutoUpdateStatus::Errored {
+                    message: format!("The installed executable is missing: {}", path.display()),
+                };
+                cx.notify();
+            }
+        }
+    }
+
+    fn open_update_release(&self, cx: &mut Context<Self>) {
+        if let Some(url) = self.update_status.release_url() {
+            cx.open_url(url);
+        }
+    }
+
+    fn dismiss_update_status(&mut self, cx: &mut Context<Self>) {
+        if !self.update_status.is_busy()
+            && !matches!(&self.update_status, AutoUpdateStatus::ReadyToRestart { .. })
+        {
+            self.update_status = AutoUpdateStatus::Idle;
+            cx.notify();
+        }
     }
 
     fn start_auto_login(&mut self, config: AppConfig, cx: &mut Context<Self>) {
@@ -579,14 +841,12 @@ impl MemosDesktop {
     }
 
     fn persist_connection(&mut self, server_url: String, username: String, auto_login: bool) {
-        if let Err(error) = (AppConfig {
-            server_url,
-            username,
-            auto_login,
-            theme: self.theme_preference,
-        })
-        .save()
-        {
+        let mut config = AppConfig::load();
+        config.server_url = server_url;
+        config.username = username;
+        config.auto_login = auto_login;
+        config.theme = self.theme_preference;
+        if let Err(error) = config.save() {
             let message = format!("Could not save connection settings: {error}");
             self.error = Some(match self.error.take() {
                 Some(existing) => format!("{existing}\n{message}"),
@@ -3361,12 +3621,16 @@ impl MemosDesktop {
 
 impl Render for MemosDesktop {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let element: AnyElement = if self.connected {
+        let update_banner = self.render_auto_update_banner(cx);
+        let content: AnyElement = if self.connected {
             self.render_workspace(window, cx)
         } else {
             self.render_auth(window, cx)
         };
-        element
+        v_flex()
+            .size_full()
+            .when_some(update_banner, |app, update_banner| app.child(update_banner))
+            .child(div().flex_1().min_h_0().w_full().child(content))
     }
 }
 
@@ -3419,6 +3683,14 @@ fn saved_login_identities_for_cleanup(
         identities.push(identity);
     }
     identities
+}
+
+fn flatten_update_task<T>(
+    result: Result<anyhow::Result<T>, tokio::task::JoinError>,
+) -> Result<T, String> {
+    result
+        .map_err(|error| format!("update task stopped unexpectedly: {error}"))?
+        .map_err(|error| error.to_string())
 }
 
 fn memo_has_tag(memo: &Memo, active_tag: Option<&str>) -> bool {
@@ -3567,6 +3839,7 @@ mod tests {
             server_url: "https://old.example.com".into(),
             username: "old-user".into(),
             auto_login: true,
+            auto_update: true,
             theme: ThemePreference::System,
         };
 
@@ -3597,6 +3870,7 @@ mod tests {
             server_url: "https://memos.example.com".into(),
             username: "alice".into(),
             auto_login: true,
+            auto_update: true,
             theme: ThemePreference::System,
         };
         let identity = SavedLoginIdentity::from_config(&config).unwrap();

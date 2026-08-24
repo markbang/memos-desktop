@@ -8,6 +8,7 @@ APPLICATIONS_DIR="${MEMOS_DESKTOP_APPLICATIONS_DIR:-$HOME/Applications}"
 DATA_HOME="${XDG_DATA_HOME:-$INSTALL_ROOT/share}"
 ROLLBACK_FROM=""
 ROLLBACK_TO=""
+ACTION="install"
 temp=""
 
 usage() {
@@ -16,6 +17,7 @@ Memos Desktop installer
 
 Usage:
   install.sh [--version VERSION]
+  install.sh --update [--version VERSION]
   install.sh --uninstall
 
 Environment:
@@ -138,17 +140,26 @@ install_linux() {
   app_dir="$INSTALL_ROOT/lib/memos-desktop"
   stage="$INSTALL_ROOT/lib/.memos-desktop.new"
 
+  if [ "$ACTION" = "update" ]; then
+    [ -x "$app_dir/memos-desktop" ] || fail "no existing installer-managed application at $app_dir"
+  fi
   rm -rf "$stage"
-  mkdir -p "$stage" "$INSTALL_ROOT/bin" "$DATA_HOME/applications"
+  mkdir -p "$stage"
+  if [ "$ACTION" != "update" ]; then
+    mkdir -p "$INSTALL_ROOT/bin" "$DATA_HOME/applications"
+  fi
   cp -R "$source_dir/." "$stage/"
   [ -f "$stage/memos-desktop" ] || fail "release archive has no memos-desktop binary"
   chmod 755 "$stage/memos-desktop"
+  printf '%s\n' "$RESOLVED_VERSION" >"$stage/.installer-managed"
   replace_directory "$stage" "$app_dir"
-  rm -f "$INSTALL_ROOT/bin/memos-desktop"
-  ln -s "$app_dir/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
 
-  desktop_file="$DATA_HOME/applications/com.markbang.MemosDesktop.desktop"
-  cat >"$desktop_file" <<EOF
+  if [ "$ACTION" != "update" ]; then
+    rm -f "$INSTALL_ROOT/bin/memos-desktop"
+    ln -s "$app_dir/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
+
+    desktop_file="$DATA_HOME/applications/com.markbang.MemosDesktop.desktop"
+    cat >"$desktop_file" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Memos Desktop
@@ -161,12 +172,17 @@ Categories=Office;Utility;
 StartupNotify=true
 EOF
 
-  if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "$DATA_HOME/applications" >/dev/null 2>&1 || true
+    if command -v update-desktop-database >/dev/null 2>&1; then
+      update-desktop-database "$DATA_HOME/applications" >/dev/null 2>&1 || true
+    fi
   fi
 
-  echo "Memos Desktop installed to $app_dir"
-  path_instructions
+  if [ "$ACTION" = "update" ]; then
+    echo "Memos Desktop updated at $app_dir"
+  else
+    echo "Memos Desktop installed to $app_dir"
+    path_instructions
+  fi
 }
 
 install_macos() {
@@ -174,9 +190,15 @@ install_macos() {
   app_path="$APPLICATIONS_DIR/Memos Desktop.app"
   stage="$APPLICATIONS_DIR/.Memos Desktop.app.new"
 
+  if [ "$ACTION" = "update" ]; then
+    [ -x "$app_path/Contents/MacOS/memos-desktop" ] || fail "no existing installer-managed application at $app_path"
+  fi
   [ -f "$source_dir/memos-desktop" ] || fail "release archive has no memos-desktop binary"
   rm -rf "$stage"
-  mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources" "$INSTALL_ROOT/bin"
+  mkdir -p "$stage/Contents/MacOS" "$stage/Contents/Resources"
+  if [ "$ACTION" != "update" ]; then
+    mkdir -p "$INSTALL_ROOT/bin"
+  fi
   cp "$source_dir/memos-desktop" "$stage/Contents/MacOS/memos-desktop"
   chmod 755 "$stage/Contents/MacOS/memos-desktop"
   for document in LICENSE LICENSE-THIRD-PARTY.md NOTICE README.md; do
@@ -199,6 +221,7 @@ EOF
   <key>CFBundleShortVersionString</key><string>$RESOLVED_VERSION</string>
   <key>CFBundleVersion</key><string>$RESOLVED_VERSION</string>
 EOF
+  printf '%s\n' "$RESOLVED_VERSION" >"$stage/Contents/Resources/.installer-managed"
   cat >>"$stage/Contents/Info.plist" <<'EOF'
   <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -207,11 +230,17 @@ EOF
 EOF
 
   replace_directory "$stage" "$app_path"
-  rm -f "$INSTALL_ROOT/bin/memos-desktop"
-  ln -s "$app_path/Contents/MacOS/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
-  echo "Memos Desktop installed to $app_path"
-  echo "Open it with: open '$app_path'"
-  path_instructions
+  if [ "$ACTION" != "update" ]; then
+    rm -f "$INSTALL_ROOT/bin/memos-desktop"
+    ln -s "$app_path/Contents/MacOS/memos-desktop" "$INSTALL_ROOT/bin/memos-desktop"
+  fi
+  if [ "$ACTION" = "update" ]; then
+    echo "Memos Desktop updated at $app_path"
+  else
+    echo "Memos Desktop installed to $app_path"
+    echo "Open it with: open '$app_path'"
+    path_instructions
+  fi
 }
 
 uninstall() {
@@ -227,7 +256,6 @@ uninstall() {
 }
 
 main() {
-  action="install"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --version)
@@ -235,8 +263,14 @@ main() {
         VERSION="$2"
         shift 2
         ;;
+      --update)
+        [ "$ACTION" = "install" ] || fail "only one action may be specified"
+        ACTION="update"
+        shift
+        ;;
       --uninstall)
-        action="uninstall"
+        [ "$ACTION" = "install" ] || fail "only one action may be specified"
+        ACTION="uninstall"
         shift
         ;;
       --help | -h)
@@ -247,7 +281,7 @@ main() {
     esac
   done
 
-  if [ "$action" = "uninstall" ]; then
+  if [ "$ACTION" = "uninstall" ]; then
     uninstall
     exit 0
   fi
@@ -267,11 +301,12 @@ main() {
   trap cleanup EXIT HUP INT TERM
   archive="$temp/$asset"
   checksums="$temp/SHA256SUMS"
+  checksums_source="${MEMOS_DESKTOP_CHECKSUMS_PATH:-}"
 
   if [ -n "${MEMOS_DESKTOP_ARCHIVE_PATH:-}" ]; then
-    [ -n "${MEMOS_DESKTOP_CHECKSUMS_PATH:-}" ] || fail "MEMOS_DESKTOP_CHECKSUMS_PATH is required with a local archive"
+    [ -n "$checksums_source" ] || fail "MEMOS_DESKTOP_CHECKSUMS_PATH is required with a local archive"
     cp "$MEMOS_DESKTOP_ARCHIVE_PATH" "$archive"
-    cp "$MEMOS_DESKTOP_CHECKSUMS_PATH" "$checksums"
+    cp "$checksums_source" "$checksums"
     RESOLVED_VERSION="${MEMOS_DESKTOP_RESOLVED_VERSION:-0.1.0}"
   else
     case "$VERSION" in
@@ -291,7 +326,12 @@ main() {
     release_base="https://github.com/$REPOSITORY/releases/download/$release_tag"
     echo "Downloading Memos Desktop $release_tag for $platform-$architecture..."
     download "$release_base/$asset" "$archive"
-    download "$release_base/SHA256SUMS" "$checksums"
+    if [ -n "$checksums_source" ]; then
+      [ -f "$checksums_source" ] || fail "provided SHA256SUMS file does not exist: $checksums_source"
+      cp "$checksums_source" "$checksums"
+    else
+      download "$release_base/SHA256SUMS" "$checksums"
+    fi
   fi
 
   verify_archive "$archive" "$checksums" "$asset"

@@ -33,7 +33,7 @@ The current build includes:
 - Memo editing, creation-time/location updates, task actions, CEL saved shortcuts, and pagination
 - Comment/reaction/relation activity, share-link expiry/revocation, and authenticated attachment previews/opening
 - Inline Memo image galleries, image lightbox previews, and a media-focused attachment library
-- System/light/dark appearance modes, user avatars, right-click account menus, and system-keyring auto-login
+- System/light/dark appearance modes, user avatars, right-click account menus, system-keyring auto-login, and Zed-style automatic update state
 - Inbox notification navigation, archive/delete mutations, account/PAT/webhook settings, and admin resources
 - Password registration, SSO/OAuth2 PKCE, shared memo links, and SSE live refresh
 - Demo mode for visual development without a server
@@ -50,7 +50,11 @@ curl --proto '=https' --tlsv1.2 -fsSL \
   https://github.com/markbang/memos-desktop/releases/latest/download/install.sh | sh
 ```
 
-The installer checks the release archive against the same release's `SHA256SUMS` to detect corruption. Download authenticity still relies on GitHub HTTPS and release integrity. Linux installs under `~/.local` and creates an XDG desktop entry. macOS installs `Memos Desktop.app` under `~/Applications`. Install a specific release with `MEMOS_DESKTOP_VERSION=v0.1.0`, or uninstall while preserving user configuration with:
+The installer checks the release archive against the same release's `SHA256SUMS` to detect corruption. Download authenticity still relies on GitHub HTTPS and release integrity. Linux installs under `~/.local` and creates an XDG desktop entry. macOS installs `Memos Desktop.app` under `~/Applications`.
+
+Official installer copies on Linux and macOS check for updates after startup and every hour by default. The application verifies the release installer, runs an in-place update, and asks for a restart when the new version is ready. The preference and manual check live under Settings > Preferences. Package-manager installs, source builds, and Windows archives are detected as externally managed: they receive an update notification and release link without modifying the installation.
+
+Install a specific release with `MEMOS_DESKTOP_VERSION=v0.1.1`, or uninstall while preserving user configuration with:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -fsSL \
@@ -94,7 +98,9 @@ cargo test -p memos-desktop live_v030_core_round_trip -- --ignored
 
 ## Security
 
-Password sign-in credentials are stored only through the operating system credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) so a successful session can resume on the next launch. Access tokens and refresh cookies remain process-local. The JSON configuration stores only the server URL, username, auto-login preference, and theme preference. Avatar and attachment cache downloads are size-bounded, image responses are type-checked, and completed files are moved into place atomically.
+Password sign-in credentials are stored only through the operating system credential store (macOS Keychain, Windows Credential Manager, or Linux Secret Service) so a successful session can resume on the next launch. Access tokens and refresh cookies remain process-local. The JSON configuration stores only the server URL, username, auto-login preference, update preference, and theme preference. A separate non-secret SemVer marker records an installed update until the new binary starts. Avatar and attachment cache downloads are size-bounded, image responses are type-checked, and completed files are moved into place atomically.
+
+Automatic updates accept canonical stable SemVer releases from the GitHub repository, bound metadata and installer response sizes, verify `install.sh` against `SHA256SUMS` and GitHub's asset digest when present, then let the installer verify the platform archive before atomic replacement. Release authenticity still depends on GitHub HTTPS and repository release integrity; binaries remain unsigned.
 
 ## Structure
 
@@ -114,7 +120,7 @@ Memos Desktop is licensed under [Apache-2.0](LICENSE). Third-party attribution i
 ## GitHub Maintenance
 
 - CI checks formatting, workspace compilation, tests, Clippy, and release builds on Linux, macOS, and Windows.
-- Version tags such as `v0.1.0` produce platform archives and `SHA256SUMS` through the release workflow documented in [docs/RELEASING.md](docs/RELEASING.md).
+- Version tags such as `v0.1.1` produce platform archives and `SHA256SUMS` through the release workflow documented in [docs/RELEASING.md](docs/RELEASING.md).
 - Dependabot updates Cargo and GitHub Actions dependencies weekly.
 - CodeQL runs on the default branch, pull requests, and a weekly schedule.
 

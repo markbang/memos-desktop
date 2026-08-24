@@ -28,7 +28,7 @@ use memos_api::types::{
 use super::{
     DetailTab, MemosDesktop, QuickFilter, Route, SettingsSection, external_attachment_url,
 };
-use crate::{theme, theme::ThemePreference};
+use crate::{auto_update::AutoUpdateStatus, theme, theme::ThemePreference};
 
 impl MemosDesktop {
     pub(super) fn render_workspace(
@@ -55,71 +55,269 @@ impl MemosDesktop {
             .into_any_element()
     }
 
+    pub(super) fn render_auto_update_banner(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let status = self.update_status.clone();
+        if matches!(&status, AutoUpdateStatus::Idle)
+            || (matches!(&status, AutoUpdateStatus::Checking) && !self.update_check_manual)
+        {
+            return None;
+        }
+
+        let icon = match &status {
+            AutoUpdateStatus::Errored { .. } => IconName::TriangleAlert,
+            AutoUpdateStatus::UpToDate | AutoUpdateStatus::Updated { .. } => IconName::CircleCheck,
+            AutoUpdateStatus::ReadyToRestart { .. } => IconName::Redo,
+            AutoUpdateStatus::Checking
+            | AutoUpdateStatus::Downloading { .. }
+            | AutoUpdateStatus::Installing { .. } => IconName::LoaderCircle,
+            AutoUpdateStatus::Available { .. } => IconName::Info,
+            AutoUpdateStatus::Idle => unreachable!(),
+        };
+        let description = match &status {
+            AutoUpdateStatus::Available { reason, .. } => Some(reason.clone()),
+            AutoUpdateStatus::ReadyToRestart { .. } => {
+                Some("The verified update is installed. Restart to use it.".into())
+            }
+            AutoUpdateStatus::Updated { .. } => {
+                Some("The new version is running and ready to use.".into())
+            }
+            AutoUpdateStatus::Errored { message } => Some(message.clone()),
+            AutoUpdateStatus::Checking
+            | AutoUpdateStatus::Downloading { .. }
+            | AutoUpdateStatus::Installing { .. }
+            | AutoUpdateStatus::UpToDate
+            | AutoUpdateStatus::Idle => None,
+        };
+        let restart_view = cx.entity().clone();
+        let release_view = cx.entity().clone();
+        let retry_view = cx.entity().clone();
+        let dismiss_view = cx.entity().clone();
+        let mut actions = h_flex().items_center().gap_1();
+        match &status {
+            AutoUpdateStatus::ReadyToRestart { .. } => {
+                actions = actions.child(
+                    Button::new("restart-after-update-banner")
+                        .primary()
+                        .small()
+                        .icon(IconName::Redo)
+                        .label("Restart")
+                        .on_click(move |_, _, cx| {
+                            restart_view.update(cx, |this, cx| {
+                                this.restart_after_update(cx);
+                            });
+                        }),
+                );
+            }
+            AutoUpdateStatus::Available { .. } | AutoUpdateStatus::Updated { .. } => {
+                actions = actions.child(
+                    Button::new("view-update-release-banner")
+                        .small()
+                        .outline()
+                        .icon(IconName::ExternalLink)
+                        .label("View release")
+                        .on_click(move |_, _, cx| {
+                            release_view.update(cx, |this, cx| {
+                                this.open_update_release(cx);
+                            });
+                        }),
+                );
+            }
+            AutoUpdateStatus::Errored { .. } => {
+                actions = actions.child(
+                    Button::new("retry-update-banner")
+                        .small()
+                        .outline()
+                        .icon(IconName::Redo2)
+                        .label("Retry")
+                        .on_click(move |_, _, cx| {
+                            retry_view.update(cx, |this, cx| {
+                                this.check_for_updates(true, cx);
+                            });
+                        }),
+                );
+            }
+            AutoUpdateStatus::Idle
+            | AutoUpdateStatus::Checking
+            | AutoUpdateStatus::Downloading { .. }
+            | AutoUpdateStatus::Installing { .. }
+            | AutoUpdateStatus::UpToDate => {}
+        }
+        if !status.is_busy() && !matches!(&status, AutoUpdateStatus::ReadyToRestart { .. }) {
+            actions = actions.child(
+                Button::new("dismiss-update-banner")
+                    .ghost()
+                    .icon(IconName::Close)
+                    .tooltip("Dismiss")
+                    .on_click(move |_, _, cx| {
+                        dismiss_view.update(cx, |this, cx| {
+                            this.dismiss_update_status(cx);
+                        });
+                    }),
+            );
+        }
+
+        Some(
+            h_flex()
+                .w_full()
+                .min_h(px(44.0))
+                .px_4()
+                .py_2()
+                .items_center()
+                .justify_between()
+                .gap_3()
+                .border_b_1()
+                .border_color(if matches!(&status, AutoUpdateStatus::Errored { .. }) {
+                    theme::error_border()
+                } else {
+                    theme::line()
+                })
+                .bg(if matches!(&status, AutoUpdateStatus::Errored { .. }) {
+                    theme::error_background()
+                } else {
+                    theme::surface()
+                })
+                .child(
+                    h_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .items_center()
+                        .gap_3()
+                        .child(Icon::new(icon).size_4().text_color(
+                            if matches!(&status, AutoUpdateStatus::Errored { .. }) {
+                                theme::error_text()
+                            } else {
+                                theme::cobalt_dark()
+                            },
+                        ))
+                        .child(
+                            v_flex()
+                                .min_w_0()
+                                .gap_0p5()
+                                .child(div().text_sm().font_semibold().child(status.label()))
+                                .when_some(description, |content, description| {
+                                    content.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .child(description),
+                                    )
+                                }),
+                        ),
+                )
+                .child(actions)
+                .into_any_element(),
+        )
+    }
+
     fn account_context_menu(
         menu: PopupMenu,
         view: gpui::Entity<Self>,
         theme_preference: ThemePreference,
         has_saved_login: bool,
+        update_status: AutoUpdateStatus,
     ) -> PopupMenu {
         let account_view = view.clone();
         let preferences_view = view.clone();
         let system_view = view.clone();
         let light_view = view.clone();
         let dark_view = view.clone();
+        let check_view = view.clone();
+        let restart_view = view.clone();
+        let release_view = view.clone();
         let forget_view = view.clone();
         let disconnect_view = view;
-        menu.label("Memos Desktop")
-            .item(
-                PopupMenuItem::new("Account")
-                    .icon(IconName::User)
-                    .on_click(move |_, _, cx| {
+        let update_check_disabled = update_status.is_busy()
+            || matches!(&update_status, AutoUpdateStatus::ReadyToRestart { .. });
+        let mut menu =
+            menu.label("Memos Desktop")
+                .item(PopupMenuItem::new("Account").icon(IconName::User).on_click(
+                    move |_, _, cx| {
                         account_view.update(cx, |this, cx| {
                             this.settings_section = SettingsSection::Account;
                             this.navigate(Route::Settings, cx);
                         });
-                    }),
-            )
-            .item(
-                PopupMenuItem::new("Preferences")
-                    .icon(IconName::Settings2)
+                    },
+                ))
+                .item(
+                    PopupMenuItem::new("Preferences")
+                        .icon(IconName::Settings2)
+                        .on_click(move |_, _, cx| {
+                            preferences_view.update(cx, |this, cx| {
+                                this.settings_section = SettingsSection::Preferences;
+                                this.navigate(Route::Settings, cx);
+                            });
+                        }),
+                )
+                .separator()
+                .item(
+                    PopupMenuItem::new("Follow system theme")
+                        .checked(theme_preference == ThemePreference::System)
+                        .on_click(move |_, window, cx| {
+                            system_view.update(cx, |this, cx| {
+                                this.set_theme_preference(ThemePreference::System, window, cx);
+                            });
+                        }),
+                )
+                .item(
+                    PopupMenuItem::new("Light theme")
+                        .icon(IconName::Sun)
+                        .checked(theme_preference == ThemePreference::Light)
+                        .on_click(move |_, window, cx| {
+                            light_view.update(cx, |this, cx| {
+                                this.set_theme_preference(ThemePreference::Light, window, cx);
+                            });
+                        }),
+                )
+                .item(
+                    PopupMenuItem::new("Dark theme")
+                        .icon(IconName::Moon)
+                        .checked(theme_preference == ThemePreference::Dark)
+                        .on_click(move |_, window, cx| {
+                            dark_view.update(cx, |this, cx| {
+                                this.set_theme_preference(ThemePreference::Dark, window, cx);
+                            });
+                        }),
+                );
+
+        menu = menu.separator().item(
+            PopupMenuItem::new(if update_status.is_busy() {
+                "Checking for updates..."
+            } else {
+                "Check for updates"
+            })
+            .icon(IconName::Redo2)
+            .disabled(update_check_disabled)
+            .on_click(move |_, _, cx| {
+                check_view.update(cx, |this, cx| {
+                    this.check_for_updates(true, cx);
+                });
+            }),
+        );
+        if matches!(&update_status, AutoUpdateStatus::ReadyToRestart { .. }) {
+            menu = menu.item(
+                PopupMenuItem::new("Restart to update")
+                    .icon(IconName::Redo)
                     .on_click(move |_, _, cx| {
-                        preferences_view.update(cx, |this, cx| {
-                            this.settings_section = SettingsSection::Preferences;
-                            this.navigate(Route::Settings, cx);
+                        restart_view.update(cx, |this, cx| {
+                            this.restart_after_update(cx);
                         });
                     }),
-            )
-            .separator()
-            .item(
-                PopupMenuItem::new("Follow system theme")
-                    .checked(theme_preference == ThemePreference::System)
-                    .on_click(move |_, window, cx| {
-                        system_view.update(cx, |this, cx| {
-                            this.set_theme_preference(ThemePreference::System, window, cx);
+            );
+        } else if update_status.release_url().is_some() {
+            menu = menu.item(
+                PopupMenuItem::new("View release")
+                    .icon(IconName::ExternalLink)
+                    .on_click(move |_, _, cx| {
+                        release_view.update(cx, |this, cx| {
+                            this.open_update_release(cx);
                         });
                     }),
-            )
-            .item(
-                PopupMenuItem::new("Light theme")
-                    .icon(IconName::Sun)
-                    .checked(theme_preference == ThemePreference::Light)
-                    .on_click(move |_, window, cx| {
-                        light_view.update(cx, |this, cx| {
-                            this.set_theme_preference(ThemePreference::Light, window, cx);
-                        });
-                    }),
-            )
-            .item(
-                PopupMenuItem::new("Dark theme")
-                    .icon(IconName::Moon)
-                    .checked(theme_preference == ThemePreference::Dark)
-                    .on_click(move |_, window, cx| {
-                        dark_view.update(cx, |this, cx| {
-                            this.set_theme_preference(ThemePreference::Dark, window, cx);
-                        });
-                    }),
-            )
-            .separator()
+            );
+        }
+
+        menu.separator()
             .item(
                 PopupMenuItem::new("Forget saved login")
                     .icon(IconName::Delete)
@@ -175,6 +373,8 @@ impl MemosDesktop {
         };
         let theme_preference = self.theme_preference;
         let has_saved_login = !self.saved_login_identities.is_empty();
+        let settings_update_status = self.update_status.clone();
+        let account_update_status = self.update_status.clone();
         let view = cx.entity().clone();
         let settings_context_view = cx.entity().clone();
         v_flex()
@@ -267,6 +467,7 @@ impl MemosDesktop {
                                     settings_context_view.clone(),
                                     theme_preference,
                                     has_saved_login,
+                                    settings_update_status.clone(),
                                 )
                             }),
                     )
@@ -281,6 +482,7 @@ impl MemosDesktop {
                                     view.clone(),
                                     theme_preference,
                                     has_saved_login,
+                                    account_update_status.clone(),
                                 )
                             }),
                     ),
@@ -4053,6 +4255,58 @@ impl MemosDesktop {
     fn render_preferences_settings(&self, cx: &mut Context<Self>) -> AnyElement {
         let settings = self.account_resources.settings.clone();
         let view = cx.entity().clone();
+        let auto_update_enabled = self.auto_update_enabled;
+        let update_status = self.update_status.clone();
+        let update_toggle_view = cx.entity().clone();
+        let update_check_view = cx.entity().clone();
+        let update_restart_view = cx.entity().clone();
+        let update_release_view = cx.entity().clone();
+        let current_version = env!("CARGO_PKG_VERSION").to_string();
+        let install_note = self
+            .update_installation
+            .external_reason()
+            .unwrap_or("Official installer; verified updates can be installed automatically")
+            .to_string();
+        let update_check_disabled = update_status.is_busy()
+            || matches!(&update_status, AutoUpdateStatus::ReadyToRestart { .. });
+        let mut update_actions = h_flex().items_center().gap_1();
+        update_actions = update_actions.child(
+            Button::new("check-for-updates-settings")
+                .outline()
+                .icon(IconName::Redo2)
+                .label("Check now")
+                .disabled(update_check_disabled)
+                .on_click(move |_, _, cx| {
+                    update_check_view.update(cx, |this, cx| {
+                        this.check_for_updates(true, cx);
+                    });
+                }),
+        );
+        if matches!(&update_status, AutoUpdateStatus::ReadyToRestart { .. }) {
+            update_actions = update_actions.child(
+                Button::new("restart-after-update-settings")
+                    .primary()
+                    .icon(IconName::Redo)
+                    .label("Restart")
+                    .on_click(move |_, _, cx| {
+                        update_restart_view.update(cx, |this, cx| {
+                            this.restart_after_update(cx);
+                        });
+                    }),
+            );
+        } else if update_status.release_url().is_some() {
+            update_actions = update_actions.child(
+                Button::new("view-update-release-settings")
+                    .ghost()
+                    .icon(IconName::ExternalLink)
+                    .label("View release")
+                    .on_click(move |_, _, cx| {
+                        update_release_view.update(cx, |this, cx| {
+                            this.open_update_release(cx);
+                        });
+                    }),
+            );
+        }
         v_flex()
             .gap_4()
             .child(
@@ -4089,6 +4343,70 @@ impl MemosDesktop {
                                 )
                             }),
                         ),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .border_1()
+                    .border_color(theme::line())
+                    .child(panel_label("APPLICATION UPDATES"))
+                    .child(setting_row(
+                        "Current version",
+                        &current_version,
+                        Some(&install_note),
+                    ))
+                    .child(
+                        h_flex()
+                            .min_h(px(60.0))
+                            .px_4()
+                            .items_center()
+                            .justify_between()
+                            .gap_4()
+                            .border_b_1()
+                            .border_color(theme::line())
+                            .child(
+                                v_flex()
+                                    .gap_1()
+                                    .child(
+                                        div().text_sm().font_semibold().child("Automatic updates"),
+                                    )
+                                    .child(div().text_xs().text_color(theme::graphite()).child(
+                                        "Check hourly and install verified official releases",
+                                    )),
+                            )
+                            .child(
+                                Checkbox::new("auto-update-enabled")
+                                    .checked(auto_update_enabled)
+                                    .on_click(move |_, _, cx| {
+                                        update_toggle_view.update(cx, |this, cx| {
+                                            this.set_auto_update_enabled(!auto_update_enabled, cx);
+                                        });
+                                    }),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .min_h(px(64.0))
+                            .px_4()
+                            .py_2()
+                            .items_center()
+                            .justify_between()
+                            .gap_4()
+                            .child(
+                                v_flex()
+                                    .min_w_0()
+                                    .gap_1()
+                                    .child(div().text_sm().font_semibold().child("Status"))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .child(update_status.label()),
+                                    ),
+                            )
+                            .child(update_actions),
                     ),
             )
             .child(
