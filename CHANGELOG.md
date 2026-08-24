@@ -6,6 +6,13 @@ The project follows [Semantic Versioning](https://semver.org/) and uses GitHub R
 
 ## Unreleased
 
+## 0.1.2 - 2026-08-24
+
+### Fixed
+
+- Keep the timeline, composer, context-menu-wrapped Memo cards, and media galleries within the centered Memos Web feed width.
+- Wrap long Markdown paragraphs inside Memo cards instead of letting intrinsic text width stretch or clip the workspace.
+
 ## 0.1.1 - 2026-08-24
 
 ### Added

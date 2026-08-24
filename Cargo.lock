@@ -3570,7 +3570,7 @@ dependencies = [
 
 [[package]]
 name = "memos-desktop"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -4114,7 +4114,7 @@ dependencies = [
 
 [[package]]
 name = "openapi-normalizer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "serde_json",

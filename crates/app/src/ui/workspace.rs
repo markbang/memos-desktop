@@ -6,7 +6,7 @@ use chrono::{DateTime, Duration, Local, Utc};
 use gpui::{
     AnyElement, AppContext as _, Context, InteractiveElement as _, IntoElement, ObjectFit,
     ParentElement as _, StatefulInteractiveElement as _, Styled, StyledImage as _, Window, div,
-    img, prelude::FluentBuilder as _, px,
+    img, prelude::FluentBuilder as _, px, relative,
 };
 use gpui_component::{
     Disableable, Icon, IconName, Sizable, Size, StyledExt, WindowExt as _,
@@ -1102,12 +1102,16 @@ impl MemosDesktop {
         });
         let list = v_flex()
             .id("timeline-scroll")
+            .w_full()
             .flex_1()
+            .min_w_0()
             .min_h_0()
+            .overflow_x_hidden()
             .overflow_y_scrollbar()
             .child(
                 v_flex()
                     .w_full()
+                    .min_w_0()
                     .max_w(px(672.0))
                     .mx_auto()
                     .px_4()
@@ -1156,9 +1160,11 @@ impl MemosDesktop {
 
         v_flex()
             .id("content")
+            .w_full()
             .flex_1()
             .min_w_0()
             .h_full()
+            .overflow_hidden()
             .bg(theme::paper())
             .when(show_header, |page| page.child(header))
             .child(list)
@@ -1169,6 +1175,10 @@ impl MemosDesktop {
         let saving = self.saving;
         v_flex()
             .w_full()
+            .min_w_0()
+            .max_w(relative(1.0))
+            .flex_none()
+            .overflow_hidden()
             .border_1()
             .border_color(theme::line())
             .bg(theme::surface())
@@ -1179,6 +1189,8 @@ impl MemosDesktop {
             .gap_2()
             .child(
                 Input::new(&self.composer_input)
+                    .w_full()
+                    .min_w_0()
                     .appearance(false)
                     .bordered(false)
                     .focus_bordered(false)
@@ -1187,6 +1199,8 @@ impl MemosDesktop {
             )
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .min_h(px(36.0))
                     .items_center()
                     .justify_between()
@@ -1360,6 +1374,8 @@ impl MemosDesktop {
         let view = cx.entity().clone();
         Some(
             div()
+                .w_full()
+                .min_w_0()
                 .grid()
                 .grid_cols(3)
                 .gap_2()
@@ -1537,7 +1553,11 @@ impl MemosDesktop {
             cx,
         )
         .selectable(true)
-        .w_full();
+        .w_full()
+        .min_w_0()
+        .max_w(relative(1.0))
+        .overflow_hidden()
+        .whitespace_normal();
 
         v_flex()
             .id(gpui::SharedString::from(format!("memo-{name}")))
@@ -1614,6 +1634,11 @@ impl MemosDesktop {
                     }),
                 )
             })
+            .w_full()
+            .min_w_0()
+            .max_w(relative(1.0))
+            .flex_none()
+            .overflow_hidden()
             .child(
                 h_flex()
                     .w_full()
@@ -1625,9 +1650,26 @@ impl MemosDesktop {
                     .child(header_identity)
                     .child(header_actions),
             )
-            .child(div().w_full().px_4().pt_2().child(body))
+            .child(
+                div()
+                    .w_full()
+                    .min_w_0()
+                    .overflow_hidden()
+                    .whitespace_normal()
+                    .px_4()
+                    .pt_2()
+                    .child(body),
+            )
             .when_some(gallery, |card, gallery| {
-                card.child(div().w_full().px_4().pt_2().child(gallery))
+                card.child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .px_4()
+                        .pt_2()
+                        .child(gallery),
+                )
             })
             .when(attachment_count > 0 || reaction_count > 0, |card| {
                 card.child(
