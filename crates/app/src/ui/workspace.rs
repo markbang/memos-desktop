@@ -9,7 +9,7 @@ use gpui::{
     img, prelude::FluentBuilder as _, px, relative,
 };
 use gpui_component::{
-    Disableable, Icon, IconName, Sizable, Size, StyledExt, WindowExt as _,
+    Disableable, Icon, IconName, Selectable, Sizable, Size, StyledExt, WindowExt as _,
     avatar::Avatar,
     button::{Button, ButtonVariants as _},
     checkbox::Checkbox,
@@ -500,13 +500,21 @@ impl MemosDesktop {
         div()
             .size_10()
             .rounded(px(8.0))
-            .when(selected, |item| item.bg(theme::subtle_surface()))
+            .when(selected, |item| {
+                item.bg(theme::pale_cobalt())
+                    .text_color(theme::cobalt_dark())
+            })
             .child(
                 Button::new(gpui::SharedString::from(format!("nav-{:?}", route)))
                     .ghost()
                     .large()
+                    .selected(selected)
                     .disabled(requires_auth && self.current_user.is_none())
-                    .icon(Icon::new(icon).size_4())
+                    .icon(Icon::new(icon).size_4().text_color(if selected {
+                        theme::cobalt_dark()
+                    } else {
+                        theme::graphite()
+                    }))
                     .tooltip(route.title())
                     .on_click(move |_, _, cx| {
                         view.update(cx, |this, cx| this.navigate(route, cx));
@@ -586,6 +594,8 @@ impl MemosDesktop {
             )
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
@@ -681,6 +691,7 @@ impl MemosDesktop {
                                 h_flex()
                                     .id(gpui::SharedString::from(format!("tag-{tag}")))
                                     .w_full()
+                                    .min_w_0()
                                     .px_1()
                                     .py_1()
                                     .items_center()
@@ -703,6 +714,8 @@ impl MemosDesktop {
                                     .text_sm()
                                     .child(
                                         h_flex()
+                                            .flex_1()
+                                            .min_w_0()
                                             .items_center()
                                             .gap_1()
                                             .child(
@@ -714,10 +727,17 @@ impl MemosDesktop {
                                                     })
                                                     .child("#"),
                                             )
-                                            .child(tag),
+                                            .child(
+                                                div()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .child(tag),
+                                            ),
                                     )
                                     .child(
                                         div()
+                                            .flex_none()
                                             .font_family(theme::mono_family())
                                             .text_xs()
                                             .text_color(if selected {
@@ -861,7 +881,9 @@ impl MemosDesktop {
         );
         if self.module_loading && module_route {
             return v_flex()
+                .w_full()
                 .flex_1()
+                .min_w_0()
                 .h_full()
                 .items_center()
                 .justify_center()
@@ -1028,22 +1050,27 @@ impl MemosDesktop {
             .child(
                 h_flex()
                     .w_full()
+                    .min_w_0()
                     .max_w(px(672.0))
                     .px_4()
                     .items_center()
                     .justify_between()
                     .child(
                         h_flex()
+                            .flex_1()
+                            .min_w_0()
                             .items_center()
                             .gap_3()
-                            .min_w_0()
                             .when_some(profile_avatar, |header, avatar| header.child(avatar))
                             .child(
                                 v_flex()
+                                    .flex_1()
                                     .min_w_0()
                                     .gap_0p5()
                                     .child(
                                         div()
+                                            .w_full()
+                                            .min_w_0()
                                             .overflow_hidden()
                                             .text_ellipsis()
                                             .text_xl()
@@ -1052,6 +1079,7 @@ impl MemosDesktop {
                                     )
                                     .child(
                                         div()
+                                            .w_full()
                                             .min_w_0()
                                             .overflow_hidden()
                                             .text_ellipsis()
@@ -1065,6 +1093,7 @@ impl MemosDesktop {
                         h_flex()
                             .items_center()
                             .gap_2()
+                            .flex_none()
                             .child(
                                 div()
                                     .font_family(theme::mono_family())
@@ -1114,6 +1143,7 @@ impl MemosDesktop {
                     .min_w_0()
                     .max_w(px(672.0))
                     .mx_auto()
+                    .flex_none()
                     .px_4()
                     .pt(if show_header { px(20.0) } else { px(28.0) })
                     .pb_6()
@@ -1176,7 +1206,7 @@ impl MemosDesktop {
         v_flex()
             .w_full()
             .min_w_0()
-            .max_w(relative(1.0))
+            .max_w(px(672.0))
             .flex_none()
             .overflow_hidden()
             .border_1()
@@ -1376,6 +1406,9 @@ impl MemosDesktop {
             div()
                 .w_full()
                 .min_w_0()
+                .max_w(relative(1.0))
+                .flex_none()
+                .overflow_hidden()
                 .grid()
                 .grid_cols(3)
                 .gap_2()
@@ -1396,6 +1429,8 @@ impl MemosDesktop {
                                     "{scope}-preview-{preview_id}"
                                 )))
                                 .relative()
+                                .w_full()
+                                .max_w(relative(1.0))
                                 .h(px(tile_height))
                                 .min_w_0()
                                 .overflow_hidden()
@@ -1415,7 +1450,13 @@ impl MemosDesktop {
                                         );
                                     });
                                 })
-                                .child(img(path).size_full().object_fit(ObjectFit::Cover))
+                                .child(
+                                    img(path)
+                                        .size_full()
+                                        .max_w(relative(1.0))
+                                        .max_h(relative(1.0))
+                                        .object_fit(ObjectFit::Cover),
+                                )
                                 .when(ix + 1 == shown_items && hidden > 0, |item| {
                                     item.child(
                                         div()
@@ -1479,9 +1520,11 @@ impl MemosDesktop {
                 let profile_view = profile_view.clone();
                 h_flex()
                     .id(gpui::SharedString::from(format!("memo-author-{creator}")))
+                    .flex_1()
+                    .h_full()
+                    .min_w_0()
                     .items_center()
                     .gap_2()
-                    .min_w_0()
                     .cursor_pointer()
                     .on_click(move |_, _, cx| {
                         cx.stop_propagation();
@@ -1492,10 +1535,15 @@ impl MemosDesktop {
                     .child(avatar)
                     .child(
                         v_flex()
+                            .flex_1()
+                            .h_full()
                             .min_w_0()
+                            .justify_center()
                             .gap_0p5()
                             .child(
                                 div()
+                                    .w_full()
+                                    .min_w_0()
                                     .max_w(px(180.0))
                                     .overflow_hidden()
                                     .text_ellipsis()
@@ -1503,9 +1551,17 @@ impl MemosDesktop {
                                     .font_medium()
                                     .child(creator_label.clone()),
                             )
-                            .child(div().text_xs().text_color(theme::graphite()).child(
-                                timestamp.map(relative_time).unwrap_or_else(|| "now".into()),
-                            )),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::graphite())
+                                    .whitespace_nowrap()
+                                    .child(
+                                        timestamp
+                                            .map(relative_time)
+                                            .unwrap_or_else(|| "now".into()),
+                                    ),
+                            ),
                     )
                     .into_any_element()
             } else {
@@ -1531,6 +1587,7 @@ impl MemosDesktop {
         let header_actions = h_flex()
             .items_center()
             .gap_2()
+            .flex_none()
             .flex_shrink_0()
             .when(memo.visibility != MemoVisibility::Private, |actions| {
                 actions.child(
@@ -1555,6 +1612,7 @@ impl MemosDesktop {
         .selectable(true)
         .w_full()
         .min_w_0()
+        .h_auto()
         .max_w(relative(1.0))
         .overflow_hidden()
         .whitespace_normal();
@@ -1636,17 +1694,20 @@ impl MemosDesktop {
             })
             .w_full()
             .min_w_0()
-            .max_w(relative(1.0))
+            .max_w(px(672.0))
             .flex_none()
             .overflow_hidden()
             .child(
                 h_flex()
                     .w_full()
+                    .min_w_0()
+                    .h(px(56.0))
+                    .flex_none()
                     .items_center()
                     .justify_between()
                     .gap_3()
                     .px_4()
-                    .pt_3()
+                    .py_3()
                     .child(header_identity)
                     .child(header_actions),
             )
@@ -1654,6 +1715,8 @@ impl MemosDesktop {
                 div()
                     .w_full()
                     .min_w_0()
+                    .h_auto()
+                    .flex_none()
                     .overflow_hidden()
                     .whitespace_normal()
                     .px_4()
@@ -1665,6 +1728,8 @@ impl MemosDesktop {
                     div()
                         .w_full()
                         .min_w_0()
+                        .max_w(relative(1.0))
+                        .flex_none()
                         .overflow_hidden()
                         .px_4()
                         .pt_2()
@@ -1674,6 +1739,8 @@ impl MemosDesktop {
             .when(attachment_count > 0 || reaction_count > 0, |card| {
                 card.child(
                     h_flex()
+                        .w_full()
+                        .min_w_0()
                         .items_center()
                         .gap_3()
                         .px_4()
@@ -1918,6 +1985,7 @@ impl MemosDesktop {
         v_flex()
             .id("inspector")
             .w(px(theme::INSPECTOR_WIDTH))
+            .min_w_0()
             .h_full()
             .flex_shrink_0()
             .border_l_1()
@@ -1925,6 +1993,8 @@ impl MemosDesktop {
             .bg(theme::paper())
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .h(px(64.0))
                     .flex_shrink_0()
                     .px_4()
@@ -1935,13 +2005,19 @@ impl MemosDesktop {
                     .bg(theme::paper())
                     .child(
                         v_flex()
+                            .flex_1()
+                            .min_w_0()
                             .gap_0p5()
                             .child(div().text_base().font_semibold().child("Memo detail"))
                             .child(
                                 div()
+                                    .w_full()
+                                    .min_w_0()
                                     .font_family(theme::mono_family())
                                     .text_xs()
                                     .text_color(theme::graphite())
+                                    .overflow_hidden()
+                                    .text_ellipsis()
                                     .child(resource_id(&name)),
                             ),
                     )
@@ -1957,12 +2033,16 @@ impl MemosDesktop {
             )
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .p_4()
                     .gap_4()
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .items_center()
                             .justify_between()
                             .border_t_1()
@@ -1982,6 +2062,7 @@ impl MemosDesktop {
                             )
                             .child(
                                 h_flex()
+                                    .flex_none()
                                     .items_center()
                                     .gap_2()
                                     .text_xs()
@@ -1999,21 +2080,26 @@ impl MemosDesktop {
                     .child(self.render_detail_panel(window, cx, memo.clone(), name.clone()))
                     .when(!memo.tags.is_empty(), |panel| {
                         panel.child(
-                            v_flex().gap_2().child(panel_label("TAGS")).child(
-                                h_flex().gap_2().flex_wrap().children(memo.tags.iter().map(
-                                    |tag| {
+                            v_flex()
+                                .w_full()
+                                .min_w_0()
+                                .gap_2()
+                                .child(panel_label("TAGS"))
+                                .child(h_flex().w_full().min_w_0().gap_2().flex_wrap().children(
+                                    memo.tags.iter().map(|tag| {
                                         div()
                                             .text_xs()
                                             .text_color(theme::cobalt_dark())
                                             .child(format!("#{tag}"))
-                                    },
+                                    }),
                                 )),
-                            ),
                         )
                     })
                     .when(can_manage, |panel| {
                         panel.child(
                             h_flex()
+                                .w_full()
+                                .min_w_0()
                                 .gap_1()
                                 .pt_3()
                                 .border_t_1()
@@ -2141,12 +2227,17 @@ impl MemosDesktop {
         let detail_error = self.detail_error.clone();
         let detail_loading = self.detail_loading;
         v_flex()
+            .w_full()
+            .min_w_0()
             .flex_1()
             .min_h_0()
             .gap_3()
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .gap_1()
+                    .flex_wrap()
                     .p_1()
                     .rounded(px(7.0))
                     .bg(theme::subtle_surface())
@@ -2243,12 +2334,15 @@ impl MemosDesktop {
                 let task_view = cx.entity().clone();
                 let task_memo_name = name.clone();
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
-                    .w_full()
                     .gap_3()
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .gap_1()
                             .child(self.memo_visibility_button(
                                 name.clone(),
@@ -2278,6 +2372,9 @@ impl MemosDesktop {
                     .when(!tasks.is_empty(), |panel| {
                         panel.child(
                             v_flex()
+                                .w_full()
+                                .min_w_0()
+                                .flex_none()
                                 .gap_1()
                                 .p_2()
                                 .border_1()
@@ -2305,9 +2402,13 @@ impl MemosDesktop {
                     .when_some(gallery, |panel, gallery| {
                         panel.child(
                             v_flex()
+                                .w_full()
+                                .min_w_0()
                                 .gap_2()
                                 .child(
                                     h_flex()
+                                        .w_full()
+                                        .min_w_0()
                                         .items_center()
                                         .justify_between()
                                         .child(
@@ -2335,13 +2436,16 @@ impl MemosDesktop {
                     })
                     .when(!link_metadata.is_empty(), |panel| {
                         panel.child(
-                            v_flex().gap_2().children(
+                            v_flex().w_full().min_w_0().gap_2().children(
                                 link_metadata.into_iter().enumerate().filter_map(
                                     |(ix, metadata)| {
                                         let url = metadata.url?;
                                         let open_url = url.clone();
                                         Some(
                                             h_flex()
+                                                .w_full()
+                                                .min_w_0()
+                                                .flex_none()
                                                 .gap_2()
                                                 .p_2()
                                                 .border_1()
@@ -2353,17 +2457,28 @@ impl MemosDesktop {
                                                         .min_w_0()
                                                         .gap_1()
                                                         .child(
-                                                            div().text_sm().font_semibold().child(
-                                                                metadata
-                                                                    .title
-                                                                    .unwrap_or_else(|| url.clone()),
-                                                            ),
+                                                            div()
+                                                                .w_full()
+                                                                .min_w_0()
+                                                                .overflow_hidden()
+                                                                .text_ellipsis()
+                                                                .text_sm()
+                                                                .font_semibold()
+                                                                .child(
+                                                                    metadata.title.unwrap_or_else(
+                                                                        || url.clone(),
+                                                                    ),
+                                                                ),
                                                         )
                                                         .when_some(
                                                             metadata.description,
                                                             |content, description| {
                                                                 content.child(
                                                                     div()
+                                                                        .w_full()
+                                                                        .min_w_0()
+                                                                        .overflow_hidden()
+                                                                        .text_ellipsis()
                                                                         .text_xs()
                                                                         .text_color(
                                                                             theme::graphite(),
@@ -2389,7 +2504,7 @@ impl MemosDesktop {
                         )
                     })
                     .child(
-                        div().flex_1().min_h_0().w_full().child(
+                        div().w_full().min_w_0().flex_1().min_h_0().child(
                             TextView::markdown(
                                 gpui::SharedString::from(format!("inspector-{name}")),
                                 content,
@@ -2399,7 +2514,9 @@ impl MemosDesktop {
                             .selectable(true)
                             .scrollable(true)
                             .w_full()
-                            .h_full(),
+                            .min_w_0()
+                            .h_full()
+                            .whitespace_normal(),
                         ),
                     )
                     .into_any_element()
@@ -2434,11 +2551,15 @@ impl MemosDesktop {
         let comment_view = cx.entity().clone();
         let view = cx.entity().clone();
         v_flex()
+            .w_full()
+            .min_w_0()
             .flex_1()
             .min_h_0()
             .gap_3()
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .items_center()
                     .gap_1()
                     .flex_wrap()
@@ -2489,6 +2610,8 @@ impl MemosDesktop {
             )
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
@@ -2506,12 +2629,17 @@ impl MemosDesktop {
                         let comment_name = comment.name.clone().unwrap_or_default();
                         let view = comment_view.clone();
                         v_flex()
+                            .w_full()
+                            .min_w_0()
+                            .flex_none()
                             .gap_1()
                             .pb_3()
                             .border_b_1()
                             .border_color(theme::line())
                             .child(
                                 h_flex()
+                                    .w_full()
+                                    .min_w_0()
                                     .items_center()
                                     .justify_between()
                                     .child(
@@ -2519,6 +2647,7 @@ impl MemosDesktop {
                                             .font_family(theme::mono_family())
                                             .text_xs()
                                             .text_color(theme::graphite())
+                                            .whitespace_nowrap()
                                             .child(
                                                 comment
                                                     .create_time
@@ -2546,8 +2675,12 @@ impl MemosDesktop {
                             )
                             .child(
                                 div()
+                                    .w_full()
+                                    .min_w_0()
                                     .text_sm()
                                     .line_height(px(20.0))
+                                    .whitespace_normal()
+                                    .overflow_hidden()
                                     .child(memo_excerpt(&comment.content, None)),
                             )
                     })),
@@ -2555,9 +2688,11 @@ impl MemosDesktop {
             .when(can_interact, |panel| {
                 panel.child(
                     h_flex()
+                        .w_full()
+                        .min_w_0()
                         .items_center()
                         .gap_2()
-                        .child(Input::new(&self.comment_input))
+                        .child(Input::new(&self.comment_input).w_full().min_w_0().flex_1())
                         .child(
                             Button::new("send-comment")
                                 .small()
@@ -2618,11 +2753,13 @@ impl MemosDesktop {
         let add_view = cx.entity().clone();
         let relation_view = cx.entity().clone();
         v_flex()
+            .w_full()
+            .min_w_0()
             .flex_1()
             .min_h_0()
             .gap_2()
             .child(
-                h_flex().justify_end().child(
+                h_flex().w_full().min_w_0().justify_end().child(
                     Button::new("add-relation")
                         .small()
                         .primary()
@@ -2638,6 +2775,8 @@ impl MemosDesktop {
             )
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
@@ -2659,6 +2798,9 @@ impl MemosDesktop {
                                 let view = relation_view.clone();
                                 let related_name = relation.related_memo.name.clone();
                                 h_flex()
+                                    .w_full()
+                                    .min_w_0()
+                                    .flex_none()
                                     .items_center()
                                     .gap_2()
                                     .p_2()
@@ -2678,12 +2820,18 @@ impl MemosDesktop {
                                                     .child(relation_type),
                                             )
                                             .child(
-                                                div().text_xs().child(
-                                                    relation
-                                                        .related_memo
-                                                        .snippet
-                                                        .unwrap_or(related_name),
-                                                ),
+                                                div()
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .text_xs()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .child(
+                                                        relation
+                                                            .related_memo
+                                                            .snippet
+                                                            .unwrap_or(related_name),
+                                                    ),
                                             ),
                                     )
                                     .child(
@@ -2740,11 +2888,15 @@ impl MemosDesktop {
         let shares = self.detail.shares.clone();
         let view = cx.entity().clone();
         v_flex()
+            .w_full()
+            .min_w_0()
             .flex_1()
             .min_h_0()
             .gap_3()
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .items_center()
                     .justify_between()
                     .child(
@@ -2769,6 +2921,8 @@ impl MemosDesktop {
             )
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
@@ -2792,6 +2946,9 @@ impl MemosDesktop {
                         let view = cx.entity().clone();
                         let delete_name = share_name.clone();
                         h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .flex_none()
                             .gap_1()
                             .items_center()
                             .p_2()
@@ -2923,21 +3080,28 @@ impl MemosDesktop {
         let external_view = cx.entity().clone();
         let attachment_view = cx.entity().clone();
         v_flex()
+            .w_full()
+            .min_w_0()
             .flex_1()
             .min_h_0()
             .gap_3()
             .child(
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .items_center()
                     .justify_between()
                     .child(
                         div()
+                            .flex_1()
+                            .min_w_0()
                             .text_xs()
                             .text_color(theme::graphite())
                             .child("Files attached to this memo"),
                     )
                     .child(
                         h_flex()
+                            .flex_none()
                             .gap_1()
                             .child(
                                 Button::new("attach-external")
@@ -2969,6 +3133,8 @@ impl MemosDesktop {
             )
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .flex_1()
                     .min_h_0()
                     .overflow_y_scrollbar()
@@ -2998,6 +3164,9 @@ impl MemosDesktop {
                                 let can_open = external_attachment_url(&attachment).is_some()
                                     || attachment.name.is_some();
                                 h_flex()
+                                    .w_full()
+                                    .min_w_0()
+                                    .flex_none()
                                     .gap_2()
                                     .items_center()
                                     .p_2()
@@ -3035,9 +3204,13 @@ impl MemosDesktop {
                                             )
                                             .child(
                                                 div()
+                                                    .w_full()
+                                                    .min_w_0()
                                                     .font_family(theme::mono_family())
                                                     .text_xs()
                                                     .text_color(theme::graphite())
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
                                                     .child(metadata),
                                             ),
                                     )
@@ -3202,7 +3375,10 @@ impl MemosDesktop {
                 let edit_view = memo_view.clone();
                 let name = memo_view.name.clone().unwrap_or_default();
                 h_flex()
+                    .w_full()
+                    .min_w_0()
                     .min_h(px(64.0))
+                    .flex_none()
                     .px_4()
                     .items_center()
                     .justify_between()
@@ -3226,6 +3402,7 @@ impl MemosDesktop {
                     )
                     .child(
                         h_flex()
+                            .flex_none()
                             .items_center()
                             .gap_1()
                             .child(
@@ -3271,9 +3448,11 @@ impl MemosDesktop {
             "Saved views",
             "Reusable filters",
             v_flex()
+                .w_full()
+                .min_w_0()
                 .gap_4()
                 .child(
-                    h_flex().justify_end().child(
+                    h_flex().w_full().justify_end().child(
                         Button::new("create-memo-view")
                             .primary()
                             .icon(IconName::Plus)
@@ -3322,7 +3501,10 @@ impl MemosDesktop {
                                 move |(title, filter, quick_filter)| {
                                     let view = quick_view_entity.clone();
                                     h_flex()
+                                        .w_full()
+                                        .min_w_0()
                                         .min_h(px(56.0))
+                                        .flex_none()
                                         .px_4()
                                         .items_center()
                                         .justify_between()
@@ -3330,13 +3512,19 @@ impl MemosDesktop {
                                         .border_color(theme::line())
                                         .child(
                                             v_flex()
+                                                .flex_1()
+                                                .min_w_0()
                                                 .gap_1()
                                                 .child(div().text_sm().font_semibold().child(title))
                                                 .child(
                                                     div()
+                                                        .w_full()
+                                                        .min_w_0()
                                                         .font_family(theme::mono_family())
                                                         .text_xs()
                                                         .text_color(theme::graphite())
+                                                        .overflow_hidden()
+                                                        .text_ellipsis()
                                                         .child(filter),
                                                 ),
                                         )
@@ -3383,6 +3571,8 @@ impl MemosDesktop {
         let load_view = cx.entity().clone();
         let attachment_view = cx.entity().clone();
         let content = v_flex()
+            .w_full()
+            .min_w_0()
             .gap_3()
             .child(
                 h_flex().justify_end().child(
@@ -3404,6 +3594,8 @@ impl MemosDesktop {
                         .gap_2()
                         .child(
                             h_flex()
+                                .w_full()
+                                .min_w_0()
                                 .items_center()
                                 .justify_between()
                                 .child(panel_label("MEDIA"))
@@ -3452,7 +3644,10 @@ impl MemosDesktop {
                             let can_open = external_attachment_url(&attachment).is_some()
                                 || attachment.name.is_some();
                             h_flex()
+                                .w_full()
+                                .min_w_0()
                                 .min_h(px(58.0))
+                                .flex_none()
                                 .px_4()
                                 .items_center()
                                 .justify_between()
@@ -3494,15 +3689,20 @@ impl MemosDesktop {
                                                 )
                                                 .child(
                                                     div()
+                                                        .w_full()
+                                                        .min_w_0()
                                                         .font_family(theme::mono_family())
                                                         .text_xs()
                                                         .text_color(theme::graphite())
+                                                        .overflow_hidden()
+                                                        .text_ellipsis()
                                                         .child(metadata),
                                                 ),
                                         ),
                                 )
                                 .child(
                                     h_flex()
+                                        .flex_none()
                                         .gap_1()
                                         .when(can_open, |actions| {
                                             actions.child(
@@ -3585,6 +3785,8 @@ impl MemosDesktop {
         let notification_view = cx.entity().clone();
         let load_view = cx.entity().clone();
         let content = v_flex()
+            .w_full()
+            .min_w_0()
             .border_1()
             .border_color(theme::line())
             .when(notifications_empty, |list| {
@@ -3645,14 +3847,19 @@ impl MemosDesktop {
                         let status_name = name.clone();
                         let delete_name = name.clone();
                         h_flex()
-                    .min_h(px(72.0))
-                    .px_4()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(theme::line())
+                            .w_full()
+                            .min_w_0()
+                            .min_h(px(72.0))
+                            .flex_none()
+                            .px_4()
+                            .items_center()
+                            .justify_between()
+                            .border_b_1()
+                            .border_color(theme::line())
                     .child(
                         h_flex()
+                            .flex_1()
+                            .min_w_0()
                             .gap_3()
                             .items_center()
                             .child(Icon::new(IconName::Bell).size_4())
@@ -3661,15 +3868,28 @@ impl MemosDesktop {
                                     .flex_1()
                                     .min_w_0()
                                     .gap_1()
-                                    .child(div().text_sm().font_semibold().child(kind))
                                     .child(
                                         div()
+                                            .w_full()
+                                            .min_w_0()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .child(kind),
+                                    )
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .min_w_0()
                                             .text_xs()
                                             .text_color(theme::graphite())
+                                            .overflow_hidden()
+                                            .text_ellipsis()
                                             .child(format!("from {sender}")),
                                     )
                                     .child(
                                         div()
+                                            .w_full()
+                                            .min_w_0()
                                             .text_xs()
                                             .overflow_hidden()
                                             .text_ellipsis()
@@ -3679,6 +3899,7 @@ impl MemosDesktop {
                     )
                     .child(
                         h_flex()
+                            .flex_none()
                             .gap_1()
                             .when_some(target_memo, |actions, memo_name| {
                                 actions.child(
@@ -3739,7 +3960,7 @@ impl MemosDesktop {
             )
             .when(has_more, |content| {
                 content.child(
-                    h_flex().justify_center().p_3().child(
+                    h_flex().w_full().justify_center().p_3().child(
                         Button::new("load-more-notifications")
                             .outline()
                             .label("Load more")
@@ -4154,27 +4375,45 @@ impl MemosDesktop {
             .as_deref()
             .map(|name| self.user_avatar(name, 44.0));
         v_flex()
+            .w_full()
+            .min_w_0()
             .gap_4()
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .border_1()
                     .border_color(theme::line())
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .min_h(px(72.0))
+                            .flex_none()
                             .px_4()
                             .items_center()
                             .justify_between()
                             .child(
                                 h_flex()
+                                    .flex_1()
+                                    .min_w_0()
                                     .items_center()
                                     .gap_3()
                                     .when_some(avatar, |profile, avatar| profile.child(avatar))
                                     .child(
                                         v_flex()
+                                            .flex_1()
+                                            .min_w_0()
                                             .gap_1()
                                             .child(
-                                                div().text_sm().font_semibold().child(display_name),
+                                                div()
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .text_sm()
+                                                    .font_semibold()
+                                                    .child(display_name),
                                             )
                                             .child(
                                                 div()
@@ -4218,6 +4457,8 @@ impl MemosDesktop {
                     .border_color(theme::line())
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .px_4()
                             .py_2()
                             .items_center()
@@ -4252,7 +4493,10 @@ impl MemosDesktop {
                                 let view = identity_view.clone();
                                 let name = identity.name.clone().unwrap_or_default();
                                 h_flex()
+                                    .w_full()
+                                    .min_w_0()
                                     .min_h(px(56.0))
+                                    .flex_none()
                                     .px_4()
                                     .items_center()
                                     .justify_between()
@@ -4260,17 +4504,27 @@ impl MemosDesktop {
                                     .border_color(theme::line())
                                     .child(
                                         v_flex()
+                                            .flex_1()
+                                            .min_w_0()
                                             .gap_1()
                                             .child(
                                                 div()
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
                                                     .text_sm()
                                                     .child(identity.idp_name.unwrap_or_default()),
                                             )
                                             .child(
                                                 div()
+                                                    .w_full()
+                                                    .min_w_0()
                                                     .font_family(theme::mono_family())
                                                     .text_xs()
                                                     .text_color(theme::graphite())
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
                                                     .child(identity.extern_uid.unwrap_or_default()),
                                             ),
                                     )
@@ -4350,9 +4604,13 @@ impl MemosDesktop {
             );
         }
         v_flex()
+            .w_full()
+            .min_w_0()
             .gap_4()
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .border_1()
                     .border_color(theme::line())
                     .child(panel_label("APPEARANCE"))
@@ -4399,7 +4657,10 @@ impl MemosDesktop {
                     ))
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .min_h(px(60.0))
+                            .flex_none()
                             .px_4()
                             .items_center()
                             .justify_between()
@@ -4408,13 +4669,29 @@ impl MemosDesktop {
                             .border_color(theme::line())
                             .child(
                                 v_flex()
+                                    .flex_1()
+                                    .min_w_0()
                                     .gap_1()
                                     .child(
-                                        div().text_sm().font_semibold().child("Automatic updates"),
+                                        div()
+                                            .w_full()
+                                            .min_w_0()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .child("Automatic updates"),
                                     )
-                                    .child(div().text_xs().text_color(theme::graphite()).child(
-                                        "Check hourly and install verified official releases",
-                                    )),
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .text_xs()
+                                            .text_color(theme::graphite())
+                                            .child(
+                                                "Check hourly and install verified official releases",
+                                            ),
+                                    ),
                             )
                             .child(
                                 Checkbox::new("auto-update-enabled")
@@ -4428,7 +4705,10 @@ impl MemosDesktop {
                     )
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .min_h(px(64.0))
+                            .flex_none()
                             .px_4()
                             .py_2()
                             .items_center()
@@ -4436,6 +4716,7 @@ impl MemosDesktop {
                             .gap_4()
                             .child(
                                 v_flex()
+                                    .flex_1()
                                     .min_w_0()
                                     .gap_1()
                                     .child(div().text_sm().font_semibold().child("Status"))
@@ -4448,7 +4729,7 @@ impl MemosDesktop {
                                             .child(update_status.label()),
                                     ),
                             )
-                            .child(update_actions),
+                            .child(update_actions.flex_none()),
                     ),
             )
             .child(
@@ -4468,7 +4749,10 @@ impl MemosDesktop {
                         let edit_setting = setting.clone();
                         let name = setting.name.clone().unwrap_or_default();
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .min_h(px(60.0))
+                            .flex_none()
                             .px_4()
                             .items_center()
                             .justify_between()
@@ -4476,8 +4760,12 @@ impl MemosDesktop {
                             .border_color(theme::line())
                             .child(
                                 div()
+                                    .flex_1()
+                                    .min_w_0()
                                     .font_family(theme::mono_family())
                                     .text_sm()
+                                    .overflow_hidden()
+                                    .text_ellipsis()
                                     .child(resource_id(&name)),
                             )
                             .child(
@@ -4509,9 +4797,11 @@ impl MemosDesktop {
         let create_view = cx.entity().clone();
         let delete_view = cx.entity().clone();
         v_flex()
+            .w_full()
+            .min_w_0()
             .gap_3()
             .child(
-                h_flex().justify_end().child(
+                h_flex().w_full().justify_end().child(
                     Button::new("new-access-token")
                         .primary()
                         .icon(IconName::Plus)
@@ -4540,7 +4830,10 @@ impl MemosDesktop {
                         let view = delete_view.clone();
                         let name = token.name.clone().unwrap_or_default();
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .min_h(px(60.0))
+                            .flex_none()
                             .px_4()
                             .items_center()
                             .justify_between()
@@ -4548,11 +4841,20 @@ impl MemosDesktop {
                             .border_color(theme::line())
                             .child(
                                 v_flex()
+                                    .flex_1()
+                                    .min_w_0()
                                     .gap_1()
                                     .child(
-                                        div().text_sm().font_semibold().child(
-                                            token.description.unwrap_or_else(|| "Token".into()),
-                                        ),
+                                        div()
+                                            .w_full()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .child(
+                                                token.description.unwrap_or_else(|| "Token".into()),
+                                            ),
                                     )
                                     .child(div().text_xs().text_color(theme::graphite()).child(
                                         match token.expires_at {
@@ -4585,9 +4887,11 @@ impl MemosDesktop {
         let create_view = cx.entity().clone();
         let webhook_view = cx.entity().clone();
         v_flex()
+            .w_full()
+            .min_w_0()
             .gap_3()
             .child(
-                h_flex().justify_end().child(
+                h_flex().w_full().justify_end().child(
                     Button::new("new-webhook")
                         .primary()
                         .icon(IconName::Plus)
@@ -4621,7 +4925,10 @@ impl MemosDesktop {
                         let secret_name = name.clone();
                         let delete_name = name.clone();
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .min_h(px(64.0))
+                            .flex_none()
                             .px_4()
                             .items_center()
                             .justify_between()
@@ -4632,9 +4939,20 @@ impl MemosDesktop {
                                     .flex_1()
                                     .min_w_0()
                                     .gap_1()
-                                    .child(div().text_sm().font_semibold().child(
-                                        webhook.display_name.unwrap_or_else(|| "Webhook".into()),
-                                    ))
+                                    .child(
+                                        div()
+                                            .w_full()
+                                            .min_w_0()
+                                            .overflow_hidden()
+                                            .text_ellipsis()
+                                            .text_sm()
+                                            .font_semibold()
+                                            .child(
+                                                webhook
+                                                    .display_name
+                                                    .unwrap_or_else(|| "Webhook".into()),
+                                            ),
+                                    )
                                     .child(
                                         div()
                                             .font_family(theme::mono_family())
@@ -4647,6 +4965,7 @@ impl MemosDesktop {
                             )
                             .child(
                                 h_flex()
+                                    .flex_none()
                                     .gap_1()
                                     .when(webhook.signing_secret_set.unwrap_or(false), |actions| {
                                         actions.child(
@@ -4743,9 +5062,13 @@ impl MemosDesktop {
             type_: memos_api::types::IdentityProviderType::Oauth2,
         };
         v_flex()
+            .w_full()
+            .min_w_0()
             .gap_4()
             .child(
                 v_flex()
+                    .w_full()
+                    .min_w_0()
                     .border_1()
                     .border_color(theme::line())
                     .child(panel_label("RESOURCE STATS"))
@@ -4796,6 +5119,8 @@ impl MemosDesktop {
                     .border_color(theme::line())
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .px_4()
                             .py_2()
                             .items_center()
@@ -4834,7 +5159,10 @@ impl MemosDesktop {
                             let can_delete = Some(name.clone()) != current_user_name;
                             let profile_name = name.clone();
                             h_flex()
+                                .w_full()
+                                .min_w_0()
                                 .min_h(px(60.0))
+                                .flex_none()
                                 .px_4()
                                 .items_center()
                                 .justify_between()
@@ -4842,12 +5170,21 @@ impl MemosDesktop {
                                 .border_color(theme::line())
                                 .child(
                                     v_flex()
+                                        .flex_1()
+                                        .min_w_0()
                                         .gap_1()
                                         .child(
-                                            div().text_sm().font_semibold().child(
-                                                user.display_name
-                                                    .unwrap_or_else(|| user.username.clone()),
-                                            ),
+                                            div()
+                                                .w_full()
+                                                .min_w_0()
+                                                .overflow_hidden()
+                                                .text_ellipsis()
+                                                .text_sm()
+                                                .font_semibold()
+                                                .child(
+                                                    user.display_name
+                                                        .unwrap_or_else(|| user.username.clone()),
+                                                ),
                                         )
                                         .child(
                                             div()
@@ -4861,6 +5198,7 @@ impl MemosDesktop {
                                 )
                                 .child(
                                     h_flex()
+                                        .flex_none()
                                         .gap_1()
                                         .child(
                                             Button::new(("open-user-profile", ix))
@@ -4922,7 +5260,10 @@ impl MemosDesktop {
                             let view = resource_view.clone();
                             let edit_setting = setting.clone();
                             h_flex()
+                                .w_full()
+                                .min_w_0()
                                 .min_h(px(56.0))
+                                .flex_none()
                                 .px_4()
                                 .items_center()
                                 .justify_between()
@@ -4930,8 +5271,12 @@ impl MemosDesktop {
                                 .border_color(theme::line())
                                 .child(
                                     div()
+                                        .flex_1()
+                                        .min_w_0()
                                         .font_family(theme::mono_family())
                                         .text_sm()
+                                        .overflow_hidden()
+                                        .text_ellipsis()
                                         .child(
                                             setting
                                                 .name
@@ -4970,6 +5315,8 @@ impl MemosDesktop {
                     .border_color(theme::line())
                     .child(
                         h_flex()
+                            .w_full()
+                            .min_w_0()
                             .px_4()
                             .py_2()
                             .items_center()
@@ -5006,7 +5353,10 @@ impl MemosDesktop {
                             let edit_provider = provider.clone();
                             let name = provider.name.clone().unwrap_or_default();
                             h_flex()
+                                .w_full()
+                                .min_w_0()
                                 .min_h(px(58.0))
+                                .flex_none()
                                 .px_4()
                                 .items_center()
                                 .justify_between()
@@ -5014,9 +5364,15 @@ impl MemosDesktop {
                                 .border_color(theme::line())
                                 .child(
                                     v_flex()
+                                        .flex_1()
+                                        .min_w_0()
                                         .gap_1()
                                         .child(
                                             div()
+                                                .w_full()
+                                                .min_w_0()
+                                                .overflow_hidden()
+                                                .text_ellipsis()
                                                 .text_sm()
                                                 .font_semibold()
                                                 .child(provider.title),
@@ -5031,6 +5387,7 @@ impl MemosDesktop {
                                 )
                                 .child(
                                     h_flex()
+                                        .flex_none()
                                         .gap_1()
                                         .child(
                                             Button::new(("edit-idp", ix))
@@ -5089,9 +5446,13 @@ impl MemosDesktop {
             "Settings",
             "Account and instance",
             v_flex()
+                .w_full()
+                .min_w_0()
                 .gap_4()
                 .child(
                     h_flex()
+                        .w_full()
+                        .min_w_0()
                         .gap_1()
                         .flex_wrap()
                         .child(self.settings_section_button(
@@ -5161,11 +5522,14 @@ fn module_page(
 ) -> AnyElement {
     v_flex()
         .id(title)
+        .w_full()
         .flex_1()
         .min_w_0()
         .h_full()
         .child(
             h_flex()
+                .w_full()
+                .min_w_0()
                 .h(px(72.0))
                 .flex_shrink_0()
                 .items_center()
@@ -5175,13 +5539,27 @@ fn module_page(
                 .child(
                     v_flex()
                         .w_full()
+                        .min_w_0()
                         .max_w(px(960.0))
                         .mx_auto()
                         .px_4()
                         .gap_0p5()
-                        .child(div().text_xl().font_semibold().child(title))
                         .child(
                             div()
+                                .w_full()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .text_xl()
+                                .font_semibold()
+                                .child(title),
+                        )
+                        .child(
+                            div()
+                                .w_full()
+                                .min_w_0()
+                                .overflow_hidden()
+                                .text_ellipsis()
                                 .text_xs()
                                 .text_color(theme::graphite())
                                 .child(subtitle),
@@ -5189,16 +5567,24 @@ fn module_page(
                 ),
         )
         .child(
-            v_flex().flex_1().min_h_0().overflow_y_scrollbar().child(
-                v_flex()
-                    .w_full()
-                    .max_w(px(960.0))
-                    .mx_auto()
-                    .px_4()
-                    .pt_5()
-                    .pb_8()
-                    .child(content),
-            ),
+            v_flex()
+                .w_full()
+                .flex_1()
+                .min_w_0()
+                .min_h_0()
+                .overflow_y_scrollbar()
+                .child(
+                    v_flex()
+                        .w_full()
+                        .min_w_0()
+                        .max_w(px(960.0))
+                        .mx_auto()
+                        .flex_none()
+                        .px_4()
+                        .pt_5()
+                        .pb_8()
+                        .child(v_flex().w_full().min_w_0().flex_none().child(content)),
+                ),
         )
         .into_any_element()
 }
@@ -5224,21 +5610,50 @@ fn empty_state(icon: IconName, title: &'static str, description: &'static str) -
 
 fn setting_row(label: &'static str, value: &str, secondary: Option<&str>) -> AnyElement {
     h_flex()
+        .w_full()
+        .min_w_0()
         .min_h(px(64.0))
+        .flex_none()
         .px_4()
         .items_center()
         .justify_between()
+        .gap_4()
         .border_b_1()
         .border_color(theme::line())
-        .child(div().text_sm().font_semibold().child(label))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .text_ellipsis()
+                .text_sm()
+                .font_semibold()
+                .child(label),
+        )
         .child(
             v_flex()
+                .flex_1()
+                .min_w_0()
                 .items_end()
                 .gap_1()
-                .child(div().text_sm().child(value.to_string()))
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .text_ellipsis()
+                        .whitespace_nowrap()
+                        .text_sm()
+                        .child(value.to_string()),
+                )
                 .when_some(secondary, |column, secondary| {
                     column.child(
                         div()
+                            .w_full()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .whitespace_nowrap()
                             .text_xs()
                             .text_color(theme::graphite())
                             .child(secondary.to_string()),
