@@ -631,7 +631,14 @@ fn validate_sha256(value: &str) -> Result<()> {
 }
 
 fn sha256_hex(content: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(content))
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(content);
+    let mut result = String::with_capacity(digest.len() * 2);
+    for byte in digest.iter().copied() {
+        result.push(HEX[(byte >> 4) as usize] as char);
+        result.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    result
 }
 
 async fn write_new_file(path: &Path, content: &[u8]) -> Result<()> {
@@ -711,6 +718,18 @@ mod tests {
         let mut invalid = release_json("1.2.3", &digest);
         invalid.tag_name = "1.2.3".into();
         assert!(parse_release(invalid).is_err());
+    }
+
+    #[test]
+    fn sha256_hex_matches_known_vectors() {
+        assert_eq!(
+            sha256_hex(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256_hex(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]
