@@ -6,7 +6,7 @@ use std::{
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use memos_api::types::IdentityProvider;
-use rand::{Rng as _, distr::Alphanumeric};
+use rand::{RngExt as _, distr::Alphanumeric};
 use sha2::{Digest as _, Sha256};
 use url::Url;
 
@@ -212,6 +212,13 @@ fn parse_callback_code(request: &str, expected_state: &str) -> Result<String, Ap
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn random_token_has_requested_length_and_charset() {
+        let token = random_token(64);
+        assert_eq!(token.len(), 64);
+        assert!(token.bytes().all(|byte| byte.is_ascii_alphanumeric()));
+    }
 
     #[test]
     fn callback_parser_requires_matching_state_and_code() {
