@@ -24,7 +24,7 @@ chrono = { version = "0.4", features = ["serde"] }
 directories = "6.0"
 futures = "0.3"
 gpui = "0.2.2"
-gpui-component = "0.5.1"
+gpui-component = "0.6.0"
 gpui-component-assets = "0.5.1"
 keyring = "4.1.6"
 mime_guess = "2.0"
